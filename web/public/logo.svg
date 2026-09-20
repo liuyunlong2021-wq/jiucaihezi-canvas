@@ -1,4 +1,6 @@
-<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M32 8L58 54H46L32 29L18 54H6L32 8Z" fill="currentColor"/>
-  <path d="M32 40L40 54H24L32 40Z" fill="currentColor"/>
+<svg width="84" height="46" viewBox="8 8 84 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 韭菜盒子 Logo：顶部宽幅、细线条，故加粗笔画以适应顶栏 20px 高的小尺寸。
+       顶栏用 CSS mask（只取 alpha）渲染，favicon 直接渲染，因此这里保留品牌色。 -->
+  <path d="M10 50C10 50 10 10 50 10C90 10 90 50 90 50" stroke="#4A5D23" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10 50C12 47 15 47 17 50C19 53 22 53 24 50C26 47 29 47 31 50C33 53 36 53 38 50C40 47 43 47 45 50C47 53 50 53 52 50C54 47 57 47 59 50C61 53 64 53 66 50C68 47 71 47 73 50C75 53 78 53 80 50C82 47 85 47 87 50C89 53 90 53 90 50" stroke="#4A5D23" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

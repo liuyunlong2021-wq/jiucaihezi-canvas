@@ -10,7 +10,8 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/basketikun/infinite-canvas-docs
+  # 跟随当前仓库所属命名空间，fork 后不会因为推不动上游镜像而失败。
+  IMAGE_NAME: ghcr.io/${{ github.repository }}-docs
 
 jobs:
   meta:

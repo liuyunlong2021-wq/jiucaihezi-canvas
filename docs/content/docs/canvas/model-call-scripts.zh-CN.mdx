@@ -1,0 +1,237 @@
+---
+title: 模型调用脚本示例
+description: 用调用脚本适配需要 JSON 请求体、只接受素材 URL 的第三方视频接口
+---
+
+# 模型调用脚本示例
+
+部分第三方中转服务的视频接口不接受 OpenAI 风格的多段表单（`multipart/form-data`），而是要求 **JSON 请求体**，并且**只接受公网 URL 形式的参考素材**，不接收文件流。这类接口用内置请求格式无法直接调用，可以在模型上挂一段调用脚本适配。
+
+> 下面两个接口（MiniMax H3、Seedance 2.5）的调用脚本**已内置在画布中**：模型名匹配且能力为「视频」时自动生效，通常不需要手动配置。用户在模型上保存的脚本会覆盖内置脚本。本节保留等价源码，方便改写适配其他接口。
+
+## 在哪里配置
+
+`配置` → `渠道` → 编辑渠道 → `模型与分组` → 对应模型 → `调用脚本`。
+
+脚本按模型保存，生成视频时执行；留空时先看画布内置的适配脚本，没有匹配规则则使用内置的 OpenAI 兼容请求。同一套契约的多个模型会自动套用同一份内置脚本。
+
+## 通用套路
+
+凡是「JSON + 素材换 URL」的接口，脚本都遵循同一个四步：
+
+1. 把参考素材上传到中转服务的临时素材接口，换成公网 URL；
+2. 用 JSON 提交创建任务；
+3. 轮询任务，直到 `completed` 或 `failed`；
+4. 下载成片，返回 `Blob` 或 `{ url }`。
+
+下面两份脚本只依赖渠道里的 `baseUrl` / `apiKey`，不需要改动域名。
+
+## 示例一：MiniMax H3 参考生视频（已内置）
+
+契约要点：`duration` 1–15 秒；方向写在 `resolution` 的枚举里（`768p竖`、`480p横`、`768p(1:1)` 等）；`images` / `audios` 传公网 URL 数组。增强版才支持 `1:1`，非增强版选 1:1 会返回 400。
+
+```js
+/**
+ * JSON + 素材换 URL 的参考生视频接口（MiniMax H3 一类）。
+ * @param {string} prompt
+ * @param {string[]} images - 参考图，data URL 数组
+ * @param {File[]} audios - 参考音频
+ * @param {object} params
+ * @param {string|number} params.seconds
+ * @param {string} params.resolution - "480p" / "720p" / "1080p"
+ * @param {string} params.ratio - "16:9" / "9:16" / "1:1"
+ * @param {string} model
+ * @param {string} baseUrl
+ * @param {string} apiKey
+ * @param {function} request
+ * @param {function} http
+ * @param {function} poll
+ * @returns {Promise<Blob|{url: string}>}
+ */
+async function generateVideo({
+  prompt,
+  images,
+  audios,
+  params: { seconds, resolution, ratio },
+  model,
+  baseUrl,
+  apiKey,
+  request,
+  http,
+  poll,
+}) {
+  const origin = baseUrl.replace(/\/v1\/?$/, "");
+  const headers = { Authorization: `Bearer ${apiKey}` };
+
+  // 1. 参考素材换成公网 URL：接口只接受 http(s) URL，不接收内联文件
+  const upload = async (blob, filename) => {
+    const form = new FormData();
+    form.append("file", blob, filename);
+    const res = await request({
+      method: "post",
+      url: `${origin}/api/creations/uploads`,
+      headers,
+      data: form,
+    });
+    if (!res || !res.url) throw new Error(`素材上传失败：${JSON.stringify(res)}`);
+    return res.url;
+  };
+
+  if (!images.length) throw new Error("至少需要 1 张参考图");
+  const imageUrls = [];
+  for (let i = 0; i < images.length; i += 1) {
+    imageUrls.push(await upload(await (await fetch(images[i])).blob(), `ref-${i + 1}.png`));
+  }
+  const audioUrls = [];
+  for (let i = 0; i < audios.length; i += 1) {
+    audioUrls.push(await upload(audios[i], audios[i].name || `ref-${i + 1}.mp3`));
+  }
+
+  // 2. 画幅完全由 resolution 后缀决定：480p → 480p，720p/1080p → 768p
+  const axis = ratio === "9:16" ? "竖" : ratio === "1:1" ? "(1:1)" : "横";
+  const quality = String(resolution || "").startsWith("480") ? "480p" : "768p";
+  const duration = Math.min(15, Math.max(1, Math.round(Number(seconds) || 5)));
+
+  // 3. 创建任务（JSON body）
+  const created = await http.post("/videos", {
+    model,
+    prompt,
+    duration,
+    resolution: `${quality}${axis}`,
+    images: imageUrls,
+    audios: audioUrls,
+  });
+  if (!created || !created.id) throw new Error(`创建任务失败：${JSON.stringify(created)}`);
+
+  // 4. 轮询到终态
+  const done = await poll(
+    () => http.get(`/videos/${created.id}`),
+    (task) => {
+      if (!task) return false;
+      if (task.status === "failed") throw new Error((task.error && task.error.message) || "生成失败");
+      const url = task.url || task.result_url || task.video_url;
+      if (url) return { url };
+      return task.status === "completed" ? { done: true } : false;
+    },
+    { intervalMs: 3000, timeoutMs: 900000 },
+  );
+
+  // 5. 下载成片
+  if (done.url) return done;
+  return await http.get(`/videos/${created.id}/content`, { responseType: "blob" });
+}
+
+return await generateVideo({ prompt, images, audios, params, model, baseUrl, apiKey, request, http, poll });
+```
+
+## 示例二：Seedance 2.5（山 / 海）（已内置）
+
+与示例一的差别：画幅用 `ratio` 而不是 `resolution`；**不支持 `audios`，传了返回 422**；按次计费、生成慢，轮询超时要放宽；其中一个模型固定 30 秒。
+
+```js
+/**
+ * JSON + 素材换 URL 的参考生视频接口（Seedance 2.5 一类）。
+ * 注意：这类模型不接受 audios 字段，传了会返回 422。
+ * @param {string} prompt
+ * @param {string[]} images - 参考图 data URL
+ * @param {object} params
+ * @param {string|number} params.seconds
+ * @param {string} params.ratio - "16:9" / "9:16" / "1:1" / "4:3" / "3:4" / "21:9"
+ * @param {string} model
+ * @param {string} baseUrl
+ * @param {string} apiKey
+ * @param {function} request
+ * @param {function} http
+ * @param {function} poll
+ * @returns {Promise<Blob|{url: string}>}
+ */
+async function generateVideo({
+  prompt,
+  images,
+  params: { seconds, ratio },
+  model,
+  baseUrl,
+  apiKey,
+  request,
+  http,
+  poll,
+}) {
+  const origin = baseUrl.replace(/\/v1\/?$/, "");
+  const headers = { Authorization: `Bearer ${apiKey}` };
+  // 固定 30 秒那一档按模型名区分；只有一个模型时可以直接写死
+  const fixedDuration = String(model).includes("海");
+
+  // 1. 参考图换成公网 URL
+  const upload = async (dataUrl, index) => {
+    const blob = await (await fetch(dataUrl)).blob();
+    const form = new FormData();
+    form.append("file", blob, `ref-${index + 1}.png`);
+    const res = await request({ method: "post", url: `${origin}/api/creations/uploads`, headers, data: form });
+    if (!res || !res.url) throw new Error(`素材上传失败：${JSON.stringify(res)}`);
+    return res.url;
+  };
+
+  if (!images.length) throw new Error("至少需要 1 张参考图");
+  const imageUrls = [];
+  for (let i = 0; i < images.length; i += 1) imageUrls.push(await upload(images[i], i));
+
+  // 2. 创建任务：只传 images / ratio / duration
+  const created = await http.post("/videos", {
+    model,
+    prompt,
+    images: imageUrls,
+    ratio: ratio && ratio !== "auto" ? ratio : "16:9",
+    duration: fixedDuration ? 30 : Math.min(30, Math.max(4, Math.round(Number(seconds) || 30))),
+  });
+  if (!created || !created.id) throw new Error(`创建任务失败：${JSON.stringify(created)}`);
+
+  // 3. 轮询：生成较慢，超时放到 40 分钟
+  const done = await poll(
+    () => http.get(`/videos/${created.id}`),
+    (task) => {
+      if (!task) return false;
+      if (task.status === "failed") throw new Error((task.error && task.error.message) || "生成失败");
+      const url = task.url || task.result_url || task.video_url;
+      if (url) return { url };
+      return task.status === "completed" ? { done: true } : false;
+    },
+    { intervalMs: 5000, timeoutMs: 2400000 },
+  );
+
+  // 4. 下载成片
+  if (done.url) return done;
+  return await http.get(`/videos/${created.id}/content`, { responseType: "blob" });
+}
+
+return await generateVideo({ prompt, images, params, model, baseUrl, apiKey, request, http, poll });
+```
+
+## 可用变量
+
+脚本整体会被包进一个 async 函数执行，必须 `return` 结果：返回 `Blob` 或 `{ url }`。
+
+| 变量 | 类型 | 说明 |
+| --- | --- | --- |
+| `prompt` | `string` | 提示词 |
+| `images` | `string[]` | 参考图，data URL |
+| `videos` | `File[]` | 参考视频 |
+| `audios` | `File[]` | 参考音频 |
+| `params` | `object` | `mode`、`seconds`、`size`、`ratio`、`resolution`、`generateAudio`、`watermark` |
+| `model` | `string` | 当前模型名 |
+| `baseUrl` / `apiKey` | `string` | 当前渠道的地址与密钥 |
+| `http` | `{ get, post, url }` | 自动带鉴权的请求助手，POST 传对象时自动使用 JSON |
+| `request` | `function` | 原始请求，method / headers / body 全部自己控制 |
+| `poll` | `function` | 轮询助手，签名 `poll(fetch, extract, { intervalMs, timeoutMs })` |
+| `sleep` | `function` | 延时 |
+| `signal` | `AbortSignal` | 取消信号 |
+
+## 常见问题
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| `Invalid JSON body` | 接口要求 JSON，内置请求发的是 `multipart/form-data` | 挂调用脚本，改用 JSON 提交 |
+| `400` 且提示素材不合法 | 接口只接受 `http(s)` URL，不接受内联文件或 `data:` URL | 脚本里先调临时素材接口换 URL |
+| `422` | 传了接口不支持的字段（例如某类模型不收 `audios`） | 按接口契约精简字段 |
+| 上传素材被浏览器拦截 | 中转服务未放行画布域名（CORS） | 运行 `npx @basketikun/canvas-proxy@latest`，并在「配置 → 本地代理」打开开关 |
+| 一直轮询超时 | 生成慢，默认超时太短 | 调大 `poll` 的 `timeoutMs` |
+| 画幅方向不对 | 接口用枚举表达方向（如 `768p竖`），脚本映射写错 | 对照接口的分辨率白名单检查映射 |

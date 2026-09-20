@@ -49,7 +49,9 @@ docker compose -f docker-compose.local.yml up -d --build
 
 ## 数据说明
 
-当前主应用镜像只启动 Next.js。画布、我的素材、生成记录和 AI API Key 默认保存在浏览器本地；第三方提示词由浏览器前端直连拉取，不需要额外挂载数据目录。
+当前主应用镜像只启动 nginx，托管构建好的静态前端产物，不包含服务端渲染或项目后端。画布、我的素材、生成记录和 AI API Key 默认保存在浏览器本地；第三方提示词由浏览器前端直连拉取，不需要额外挂载数据目录。
+
+要把画布挂到自己的域名并通过 HTTPS 访问，见[自定义域名部署](/zh-CN/docs/overview/custom-domain)。
 
 ## 统计分析（可选）
 

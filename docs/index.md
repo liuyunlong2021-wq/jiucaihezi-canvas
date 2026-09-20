@@ -6,12 +6,14 @@
 - [Features](/docs/overview/features)
 - [Deploy on Render](/docs/overview/render)
 - [Docker Deployment](/docs/overview/docker)
+- [Custom Domain Deployment](/docs/overview/custom-domain)
 - [Third-party Prompt Sources](/docs/overview/third-party-prompt-repositories)
 
 ## Canvas Guide
 
 - [Canvas Node Guide](/docs/canvas/canvas-node-manual)
 - [Canvas Shortcuts](/docs/canvas/canvas-shortcuts)
+- [Model Call Script Examples](/docs/canvas/model-call-scripts)
 
 ## Development and Data
 

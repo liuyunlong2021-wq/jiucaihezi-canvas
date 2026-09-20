@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
+import { resolveBuiltinModelScript } from "@/lib/model-scripts";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -158,6 +159,8 @@ const IMAGE_KEYWORDS = ["seedream", "gpt-image", "image", "dall-e", "dalle", "im
 export function guessCapability(name: string): ModelCapability {
     const value = name.toLowerCase();
     if (VIDEO_KEYWORDS.some((keyword) => value.includes(keyword))) return "video";
+    // 有内置调用脚本的接口都是视频接口，即使模型名不含 video 关键词也按视频处理。
+    if (resolveBuiltinModelScript(name, "video")) return "video";
     if (AUDIO_KEYWORDS.some((keyword) => value.includes(keyword))) return "audio";
     if (IMAGE_KEYWORDS.some((keyword) => value.includes(keyword))) return "image";
     return "text";
@@ -193,9 +196,11 @@ export function selectableModelsByCapability(config: AiConfig, capability?: Mode
     return config.channels.flatMap((channel) => channel.models.filter((model) => model.capability === capability).map((model) => encodeChannelModel(channel.id, model.name)));
 }
 
-/** The user script (if any) attached to a model; empty string means use the system default call. */
+/** The user script attached to a model, falling back to a built-in script for known third-party video APIs. */
 export function resolveModelScript(config: AiConfig, value: string) {
-    return findChannelModel(config, value)?.model.script?.trim() || "";
+    const entry = findChannelModel(config, value);
+    if (!entry) return "";
+    return entry.model.script?.trim() || resolveBuiltinModelScript(entry.model.name, entry.model.capability);
 }
 
 function isAiConfigReady(config: AiConfig, model: string) {

@@ -1,0 +1,149 @@
+---
+title: 自定义域名部署
+description: 把无限画布挂到自己的域名，并用 Cloudflare 提供 HTTPS
+---
+
+# 自定义域名部署
+
+镜像在容器内只用裸 HTTP 监听 3000 端口，不提供 HTTPS。HTTPS 和证书交给域名前面那层反向代理处理。下面以「Cloudflare 代理 + 自建服务器 nginx」为例，说明怎么用自有域名打开画布。
+
+## 架构
+
+```text
+浏览器 → HTTPS → Cloudflare（边缘证书 + 回源证书校验）
+                 ↓ 回源 HTTPS
+             服务器 nginx :443（Cloudflare 源站证书）
+                 ↓ 反向代理 HTTP
+             容器 :3000
+```
+
+<Callout type="warn">
+不要把证书挂进容器，也不要在容器里启动 HTTPS。证书与 TLS 全部由前面的 nginx 负责。
+</Callout>
+
+## 前置条件
+
+- 域名已托管在 Cloudflare。
+- 服务器已安装 nginx，并能访问 `ghcr.io`。
+
+## 1. 启动容器
+
+只绑定本机回环地址，避免绕过 nginx 直接暴露 3000 端口：
+
+```bash
+docker run -d --name infinite-canvas --restart unless-stopped \
+  -p 127.0.0.1:3010:3000 \
+  ghcr.io/basketikun/infinite-canvas:latest
+```
+
+确认容器正常：
+
+```bash
+docker ps --filter name=infinite-canvas --format '{{.Names}} {{.Status}} {{.Ports}}'
+curl -sI http://127.0.0.1:3010/ | head -1
+```
+
+最后一条期望返回 `HTTP/1.1 200 OK`。
+
+## 2. Cloudflare 添加 DNS 记录
+
+在 `DNS` → `记录` 里添加一条 A 记录指向服务器 IP，并保持**已代理**（橙色云朵）：
+
+| 类型 | 名称 | 内容 | 代理状态 |
+| --- | --- | --- | --- |
+| A | `canvas` | `<服务器 IP>` | 已代理 |
+
+## 3. Cloudflare 创建源站证书
+
+<Callout type="warn">
+只配 DNS、不配源站证书时，Cloudflare 严格模式会返回 **526**，页面完全打不开。
+</Callout>
+
+1. 打开 `SSL/TLS` → `源服务器` → `创建证书`。
+2. 私钥类型保持 RSA (2048)，主机名填你的域名（例如 `canvas.example.com`，也可以填 `*.example.com`）。
+3. 有效期选 15 年，创建后把 **源证书** 和 **私钥** 都复制下来——私钥只在创建时显示一次。
+4. 到 `SSL/TLS` → `概述` 确认加密模式是 **完全（严格）**。
+
+## 4. 服务器保存证书
+
+```bash
+sudo mkdir -p /etc/nginx/ssl
+sudo nano /etc/nginx/ssl/canvas.example.com.pem   # 粘贴源证书
+sudo nano /etc/nginx/ssl/canvas.example.com.key   # 粘贴私钥
+sudo chmod 600 /etc/nginx/ssl/canvas.example.com.key
+```
+
+粘贴完自检，确认首尾行是完整的 PEM 标记，并且证书覆盖你的域名：
+
+```bash
+sudo head -1 /etc/nginx/ssl/canvas.example.com.pem   # -----BEGIN CERTIFICATE-----
+sudo tail -1 /etc/nginx/ssl/canvas.example.com.key   # -----END PRIVATE KEY-----
+sudo openssl x509 -in /etc/nginx/ssl/canvas.example.com.pem -noout -subject -dates -ext subjectAltName
+```
+
+## 5. 服务器配置 nginx
+
+可以直接复制仓库里的 `deploy/nginx/infinite-canvas.conf`，替换域名、证书路径和端口后放到 `/etc/nginx/sites-enabled/`；也可以按下面这条一次性写入：
+
+```bash
+sudo tee /etc/nginx/sites-enabled/canvas.example.com.conf > /dev/null <<'EOF'
+server {
+    listen 443 ssl;
+    server_name canvas.example.com;
+
+    ssl_certificate     /etc/nginx/ssl/canvas.example.com.pem;
+    ssl_certificate_key /etc/nginx/ssl/canvas.example.com.key;
+
+    location / {
+        proxy_pass http://127.0.0.1:3010;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name canvas.example.com;
+    return 301 https://$host$request_uri;
+}
+EOF
+```
+
+<Callout type="warn">
+`<<'EOF'` 的单引号不能去掉，否则 `$host`、`$remote_addr` 会被 shell 提前展开成空值。写完后用 `cat` 确认变量名还在。
+</Callout>
+
+## 6. 生效并验证
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+
+curl -sI https://canvas.example.com/canvas | head -1            # 期望 HTTP/2 200
+curl -sI https://canvas.example.com/canvas/<画布 ID> | head -1   # 深链接同样 200
+```
+
+浏览器打开 `https://canvas.example.com/canvas?mode=new` 应直接新建并进入画布。
+
+## 常见问题
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| `526` | Cloudflare 无法验证源站证书 | 确认该域名已创建源站证书并写入 nginx；临时可把加密模式降为「完全」 |
+| `525` | 回源 TLS 握手失败 | 确认 nginx 443 正常监听，且证书与私钥是同一对 |
+| 首页正常，访问 `/canvas/<id>` 或刷新后 `404` | 缺少单页应用回退 | 反代容器时无需处理（容器内置回退）；直接托管静态文件时用 `try_files $uri $uri/ /index.html;` |
+| 页面白屏、`/assets/*.js` 请求 `404` | 静态文件不完整 | 重新拉取镜像或重新上传 `dist` |
+| `nginx -t` 报 `unknown directive "http2"` | nginx 低于 1.25.1 | 改用 `listen 443 ssl http2;`，或干脆不写 http2 |
+| 出现 `duplicate MIME type` 警告 | 同一 server 重复声明了同一个 MIME 类型 | 删除重复声明即可，不影响运行 |
+
+## 更新画布
+
+```bash
+docker pull ghcr.io/basketikun/infinite-canvas:latest
+docker restart infinite-canvas
+```
+
+## 数据说明
+
+画布、我的素材、生成记录和 AI API Key 都保存在浏览器本地（IndexedDB / localStorage），服务器不需要数据库，也不保存画布内容。换域名、换浏览器后本地数据不会自动带过去，跨设备可用 WebDAV 同步。

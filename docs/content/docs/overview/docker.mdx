@@ -37,7 +37,9 @@ cd docs
 docker compose -f docker-compose.local.yml up -d --build
 ```
 
-The main application container only runs Next.js. Canvases, My Assets, generation history, and API keys are stored in the browser by default, while prompt repositories are fetched directly by the frontend. No persistent data volume is required for this data.
+The main application container only runs nginx to serve the built static frontend. There is no server-side rendering and no project backend. Canvases, My Assets, generation history, and API keys are stored in the browser by default, while prompt repositories are fetched directly by the frontend. No persistent data volume is required for this data.
+
+To serve the canvas from your own domain over HTTPS, see [Custom Domain Deployment](/docs/overview/custom-domain).
 
 ## Optional analytics
 

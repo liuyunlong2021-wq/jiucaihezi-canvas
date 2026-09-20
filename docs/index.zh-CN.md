@@ -6,12 +6,14 @@
 - [功能介绍](/zh-CN/docs/overview/features)
 - [Render 部署](/zh-CN/docs/overview/render)
 - [Docker 部署](/zh-CN/docs/overview/docker)
+- [自定义域名部署](/zh-CN/docs/overview/custom-domain)
 - [第三方提示词来源](/zh-CN/docs/overview/third-party-prompt-repositories)
 
 ## 操作手册
 
 - [画布节点操作手册](/zh-CN/docs/canvas/canvas-node-manual)
 - [画布快捷键](/zh-CN/docs/canvas/canvas-shortcuts)
+- [模型调用脚本示例](/zh-CN/docs/canvas/model-call-scripts)
 
 ## 开发与数据
 

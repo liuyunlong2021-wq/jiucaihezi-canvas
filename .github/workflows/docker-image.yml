@@ -10,7 +10,8 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/basketikun/infinite-canvas
+  # 跟随当前仓库所属命名空间：上游发布 basketikun/infinite-canvas，fork 后自动发布到自己的命名空间。
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
   meta:
@@ -25,6 +26,7 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=tag
+            type=raw,value=latest
             type=sha,prefix=
 
   build:

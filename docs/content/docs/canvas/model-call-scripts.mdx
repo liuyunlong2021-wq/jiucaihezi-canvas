@@ -1,0 +1,237 @@
+---
+title: Model Call Script Examples
+description: Use model call scripts to support third-party video APIs that require a JSON body and reference URLs
+---
+
+# Model Call Script Examples
+
+Some third-party relay services do not accept OpenAI-style `multipart/form-data` video requests. They require a **JSON body** and accept reference media only as **public URLs**, never as file streams. The built-in request format cannot call those APIs, but you can attach a model call script to adapt them.
+
+> The scripts for both interfaces below (MiniMax H3 and Seedance 2.5) are **built into the canvas**: they apply automatically when the model name matches and the model capability is video, so no manual setup is normally needed. A script saved on the model overrides the built-in one. The equivalent sources are kept here so you can adapt them to other APIs.
+
+## Where to configure it
+
+`Settings` → `Providers` → edit the provider → `Models and groups` → the target model → `Call script`.
+
+The script is stored per model and runs when that model generates a video. When it is empty, the canvas first looks for a built-in adapter script and otherwise uses the built-in OpenAI-compatible request. Models sharing one contract get the same built-in script automatically.
+
+## The common pattern
+
+Any "JSON plus upload-to-get-URL" API follows the same four steps:
+
+1. Upload reference media to the relay's temporary upload endpoint to get public URLs.
+2. Create the task with a JSON body.
+3. Poll the task until it reports `completed` or `failed`.
+4. Download the finished video and return a `Blob` or `{ url }`.
+
+Both scripts below only rely on the provider's `baseUrl` and `apiKey`, so no domain needs to be hardcoded.
+
+## Example 1: MiniMax H3 reference-to-video (built in)
+
+Contract highlights: `duration` is 1–15 seconds; the orientation is encoded in the `resolution` enum (`768p竖`, `480p横`, `768p(1:1)` and so on); `images` and `audios` take arrays of public URLs. Only the enhanced model supports `1:1`; selecting 1:1 on the other one returns 400.
+
+```js
+/**
+ * JSON plus upload-to-get-URL reference-to-video API (MiniMax H3 style).
+ * @param {string} prompt
+ * @param {string[]} images - reference images as data URLs
+ * @param {File[]} audios - reference audio
+ * @param {object} params
+ * @param {string|number} params.seconds
+ * @param {string} params.resolution - "480p" / "720p" / "1080p"
+ * @param {string} params.ratio - "16:9" / "9:16" / "1:1"
+ * @param {string} model
+ * @param {string} baseUrl
+ * @param {string} apiKey
+ * @param {function} request
+ * @param {function} http
+ * @param {function} poll
+ * @returns {Promise<Blob|{url: string}>}
+ */
+async function generateVideo({
+  prompt,
+  images,
+  audios,
+  params: { seconds, resolution, ratio },
+  model,
+  baseUrl,
+  apiKey,
+  request,
+  http,
+  poll,
+}) {
+  const origin = baseUrl.replace(/\/v1\/?$/, "");
+  const headers = { Authorization: `Bearer ${apiKey}` };
+
+  // 1. Turn reference media into public URLs; the API rejects inline files
+  const upload = async (blob, filename) => {
+    const form = new FormData();
+    form.append("file", blob, filename);
+    const res = await request({
+      method: "post",
+      url: `${origin}/api/creations/uploads`,
+      headers,
+      data: form,
+    });
+    if (!res || !res.url) throw new Error(`Upload failed: ${JSON.stringify(res)}`);
+    return res.url;
+  };
+
+  if (!images.length) throw new Error("At least one reference image is required");
+  const imageUrls = [];
+  for (let i = 0; i < images.length; i += 1) {
+    imageUrls.push(await upload(await (await fetch(images[i])).blob(), `ref-${i + 1}.png`));
+  }
+  const audioUrls = [];
+  for (let i = 0; i < audios.length; i += 1) {
+    audioUrls.push(await upload(audios[i], audios[i].name || `ref-${i + 1}.mp3`));
+  }
+
+  // 2. The frame orientation comes from the resolution suffix: 480p -> 480p, 720p/1080p -> 768p
+  const axis = ratio === "9:16" ? "竖" : ratio === "1:1" ? "(1:1)" : "横";
+  const quality = String(resolution || "").startsWith("480") ? "480p" : "768p";
+  const duration = Math.min(15, Math.max(1, Math.round(Number(seconds) || 5)));
+
+  // 3. Create the task with a JSON body
+  const created = await http.post("/videos", {
+    model,
+    prompt,
+    duration,
+    resolution: `${quality}${axis}`,
+    images: imageUrls,
+    audios: audioUrls,
+  });
+  if (!created || !created.id) throw new Error(`Task creation failed: ${JSON.stringify(created)}`);
+
+  // 4. Poll until it reaches a terminal state
+  const done = await poll(
+    () => http.get(`/videos/${created.id}`),
+    (task) => {
+      if (!task) return false;
+      if (task.status === "failed") throw new Error((task.error && task.error.message) || "Generation failed");
+      const url = task.url || task.result_url || task.video_url;
+      if (url) return { url };
+      return task.status === "completed" ? { done: true } : false;
+    },
+    { intervalMs: 3000, timeoutMs: 900000 },
+  );
+
+  // 5. Download the finished video
+  if (done.url) return done;
+  return await http.get(`/videos/${created.id}/content`, { responseType: "blob" });
+}
+
+return await generateVideo({ prompt, images, audios, params, model, baseUrl, apiKey, request, http, poll });
+```
+
+## Example 2: Seedance 2.5 (built in)
+
+Differences from example 1: the frame is set with `ratio` instead of `resolution`; **`audios` is not supported and returns 422**; billing is per request and generation is slow, so the poll timeout has to be generous; one of the models is fixed at 30 seconds.
+
+```js
+/**
+ * JSON plus upload-to-get-URL reference-to-video API (Seedance 2.5 style).
+ * Note: these models reject the audios field with a 422.
+ * @param {string} prompt
+ * @param {string[]} images - reference images as data URLs
+ * @param {object} params
+ * @param {string|number} params.seconds
+ * @param {string} params.ratio - "16:9" / "9:16" / "1:1" / "4:3" / "3:4" / "21:9"
+ * @param {string} model
+ * @param {string} baseUrl
+ * @param {string} apiKey
+ * @param {function} request
+ * @param {function} http
+ * @param {function} poll
+ * @returns {Promise<Blob|{url: string}>}
+ */
+async function generateVideo({
+  prompt,
+  images,
+  params: { seconds, ratio },
+  model,
+  baseUrl,
+  apiKey,
+  request,
+  http,
+  poll,
+}) {
+  const origin = baseUrl.replace(/\/v1\/?$/, "");
+  const headers = { Authorization: `Bearer ${apiKey}` };
+  // Distinguish the fixed-30-second model by name; hardcode it when there is only one model
+  const fixedDuration = String(model).includes("海");
+
+  // 1. Turn reference images into public URLs
+  const upload = async (dataUrl, index) => {
+    const blob = await (await fetch(dataUrl)).blob();
+    const form = new FormData();
+    form.append("file", blob, `ref-${index + 1}.png`);
+    const res = await request({ method: "post", url: `${origin}/api/creations/uploads`, headers, data: form });
+    if (!res || !res.url) throw new Error(`Upload failed: ${JSON.stringify(res)}`);
+    return res.url;
+  };
+
+  if (!images.length) throw new Error("At least one reference image is required");
+  const imageUrls = [];
+  for (let i = 0; i < images.length; i += 1) imageUrls.push(await upload(images[i], i));
+
+  // 2. Create the task with images, ratio and duration only
+  const created = await http.post("/videos", {
+    model,
+    prompt,
+    images: imageUrls,
+    ratio: ratio && ratio !== "auto" ? ratio : "16:9",
+    duration: fixedDuration ? 30 : Math.min(30, Math.max(4, Math.round(Number(seconds) || 30))),
+  });
+  if (!created || !created.id) throw new Error(`Task creation failed: ${JSON.stringify(created)}`);
+
+  // 3. Poll; generation is slow, so allow up to 40 minutes
+  const done = await poll(
+    () => http.get(`/videos/${created.id}`),
+    (task) => {
+      if (!task) return false;
+      if (task.status === "failed") throw new Error((task.error && task.error.message) || "Generation failed");
+      const url = task.url || task.result_url || task.video_url;
+      if (url) return { url };
+      return task.status === "completed" ? { done: true } : false;
+    },
+    { intervalMs: 5000, timeoutMs: 2400000 },
+  );
+
+  // 4. Download the finished video
+  if (done.url) return done;
+  return await http.get(`/videos/${created.id}/content`, { responseType: "blob" });
+}
+
+return await generateVideo({ prompt, images, params, model, baseUrl, apiKey, request, http, poll });
+```
+
+## Available variables
+
+The script runs as the body of an async function and must `return` a `Blob` or `{ url }`.
+
+| Variable | Type | Description |
+| --- | --- | --- |
+| `prompt` | `string` | Prompt text |
+| `images` | `string[]` | Reference images as data URLs |
+| `videos` | `File[]` | Reference videos |
+| `audios` | `File[]` | Reference audio |
+| `params` | `object` | `mode`, `seconds`, `size`, `ratio`, `resolution`, `generateAudio`, `watermark` |
+| `model` | `string` | Current model name |
+| `baseUrl` / `apiKey` | `string` | Address and key of the current provider |
+| `http` | `{ get, post, url }` | Authenticated request helper; POST uses JSON automatically for plain objects |
+| `request` | `function` | Raw request with full control over method, headers, and body |
+| `poll` | `function` | Polling helper, called as `poll(fetch, extract, { intervalMs, timeoutMs })` |
+| `sleep` | `function` | Delay |
+| `signal` | `AbortSignal` | Cancellation signal |
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `Invalid JSON body` | The API requires JSON while the built-in request sends `multipart/form-data` | Attach a call script that submits JSON |
+| `400` saying the media is invalid | The API only accepts `http(s)` URLs, not inline files or `data:` URLs | Upload to the temporary upload endpoint first |
+| `422` | A field the API does not support was sent (for example `audios` on some models) | Trim the payload to the documented contract |
+| Upload blocked by the browser | The relay does not allow the canvas origin (CORS) | Run `npx @basketikun/canvas-proxy@latest` and turn on the switch in Settings → Local proxy |
+| Polling always times out | Generation is slow and the default timeout is too short | Increase `timeoutMs` in the `poll` call |
+| Wrong frame orientation | The API encodes orientation in an enum such as `768p竖` and the mapping is off | Check the mapping against the API's resolution whitelist |

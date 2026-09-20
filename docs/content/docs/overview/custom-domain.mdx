@@ -1,0 +1,149 @@
+---
+title: Custom Domain Deployment
+description: Serve Infinite Canvas from your own domain with HTTPS through Cloudflare
+---
+
+# Custom Domain Deployment
+
+The image only serves plain HTTP on port 3000 inside the container and does not provide HTTPS. TLS and certificates belong to the reverse proxy in front of your domain. The steps below use Cloudflare plus nginx on your own server.
+
+## Architecture
+
+```text
+Browser → HTTPS → Cloudflare (edge certificate + origin certificate validation)
+                   ↓ HTTPS to origin
+                server nginx :443 (Cloudflare origin certificate)
+                   ↓ reverse proxy over HTTP
+                container :3000
+```
+
+<Callout type="warn">
+Do not mount certificates into the container and do not run HTTPS inside it. Certificates and TLS are handled entirely by nginx.
+</Callout>
+
+## Prerequisites
+
+- The domain is already on Cloudflare.
+- nginx is installed on the server and the server can reach `ghcr.io`.
+
+## 1. Start the container
+
+Bind it to the loopback address only, so port 3000 is not exposed directly:
+
+```bash
+docker run -d --name infinite-canvas --restart unless-stopped \
+  -p 127.0.0.1:3010:3000 \
+  ghcr.io/basketikun/infinite-canvas:latest
+```
+
+Verify it is running:
+
+```bash
+docker ps --filter name=infinite-canvas --format '{{.Names}} {{.Status}} {{.Ports}}'
+curl -sI http://127.0.0.1:3010/ | head -1
+```
+
+The last command should return `HTTP/1.1 200 OK`.
+
+## 2. Add the DNS record in Cloudflare
+
+Create an A record pointing at your server and keep it **proxied** (orange cloud):
+
+| Type | Name | Content | Proxy status |
+| --- | --- | --- | --- |
+| A | `canvas` | `<server IP>` | Proxied |
+
+## 3. Create an origin certificate in Cloudflare
+
+<Callout type="warn">
+With DNS only and no origin certificate, Cloudflare in Full (strict) mode returns **526** and the site does not load at all.
+</Callout>
+
+1. Go to `SSL/TLS` → `Origin Server` → `Create Certificate`.
+2. Keep the key type at RSA (2048) and enter your hostname (for example `canvas.example.com`, or `*.example.com`).
+3. Choose the 15-year validity, then copy both the **Origin Certificate** and the **Private Key** — the private key is only shown once.
+4. Check that `SSL/TLS` → `Overview` uses **Full (strict)**.
+
+## 4. Store the certificate on the server
+
+```bash
+sudo mkdir -p /etc/nginx/ssl
+sudo nano /etc/nginx/ssl/canvas.example.com.pem   # paste the origin certificate
+sudo nano /etc/nginx/ssl/canvas.example.com.key   # paste the private key
+sudo chmod 600 /etc/nginx/ssl/canvas.example.com.key
+```
+
+Then confirm the PEM markers are complete and the certificate covers your hostname:
+
+```bash
+sudo head -1 /etc/nginx/ssl/canvas.example.com.pem   # -----BEGIN CERTIFICATE-----
+sudo tail -1 /etc/nginx/ssl/canvas.example.com.key   # -----END PRIVATE KEY-----
+sudo openssl x509 -in /etc/nginx/ssl/canvas.example.com.pem -noout -subject -dates -ext subjectAltName
+```
+
+## 5. Configure nginx
+
+You can copy `deploy/nginx/infinite-canvas.conf` from this repository, replace the hostname, certificate paths, and port, and drop it into `/etc/nginx/sites-enabled/`. Or write it in one step:
+
+```bash
+sudo tee /etc/nginx/sites-enabled/canvas.example.com.conf > /dev/null <<'EOF'
+server {
+    listen 443 ssl;
+    server_name canvas.example.com;
+
+    ssl_certificate     /etc/nginx/ssl/canvas.example.com.pem;
+    ssl_certificate_key /etc/nginx/ssl/canvas.example.com.key;
+
+    location / {
+        proxy_pass http://127.0.0.1:3010;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name canvas.example.com;
+    return 301 https://$host$request_uri;
+}
+EOF
+```
+
+<Callout type="warn">
+Keep the single quotes in `<<'EOF'`; without them the shell expands `$host` and `$remote_addr` to empty values. Run `cat` afterwards to confirm the variables survived.
+</Callout>
+
+## 6. Apply and verify
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+
+curl -sI https://canvas.example.com/canvas | head -1              # expect HTTP/2 200
+curl -sI https://canvas.example.com/canvas/<canvas id> | head -1   # deep link also 200
+```
+
+Opening `https://canvas.example.com/canvas?mode=new` in a browser should create a canvas and enter it directly.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `526` | Cloudflare cannot validate the origin certificate | Make sure the origin certificate for this hostname exists and is installed in nginx; as a stopgap, lower the encryption mode to Full |
+| `525` | TLS handshake with the origin failed | Check that nginx listens on 443 and the certificate matches the private key |
+| Home page works but `/canvas/<id>` or a refresh returns `404` | Missing single-page-app fallback | Not needed when proxying the container (it has the fallback built in); when serving static files use `try_files $uri $uri/ /index.html;` |
+| Blank page, `/assets/*.js` returns `404` | Incomplete static files | Pull the image again or re-upload `dist` |
+| `nginx -t` reports `unknown directive "http2"` | nginx older than 1.25.1 | Use `listen 443 ssl http2;` instead, or drop http2 entirely |
+| `duplicate MIME type` warning | The same MIME type is declared twice in one server block | Remove the duplicate; it does not affect operation |
+
+## Updating the canvas
+
+```bash
+docker pull ghcr.io/basketikun/infinite-canvas:latest
+docker restart infinite-canvas
+```
+
+## Data notes
+
+Canvas projects, My Assets, generation history, and AI API keys are stored in the browser (IndexedDB / localStorage). The server needs no database and never stores canvas content. Local data does not follow you to a new domain or browser; use WebDAV sync for cross-device access.
