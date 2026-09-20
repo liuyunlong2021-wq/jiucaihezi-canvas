@@ -77,6 +77,11 @@
 - 将当前未提交的代码全部提交到 Git。
 - 提交完成后，给当前提交打最新版本号对应的 tag，例如 `v0.0.5`。
 - 发版本流程中不要执行编译、测试或构建，除非用户明确要求。
+- 本仓库是 `basketikun/infinite-canvas` 的 fork，只能推送到 `origin`（`liuyunlong2021-wq/jiucaihezi-canvas`）；`upstream` 没有写权限。
+- 镜像名由 workflow 里的 `ghcr.io/${{ github.repository }}` 决定，fork 后自动发布到自己的命名空间，不需要改 workflow。
+- tag 必须推到远程才会触发构建：`git push origin main --tags`。CI 只在推送 `v*` tag 时触发，只推 `main` 不会构建。
+- tag 推送后到 Actions 确认 `Docker image` 构建成功，再更新服务器：`docker pull ghcr.io/liuyunlong2021-wq/jiucaihezi-canvas:vX.Y.Z`，然后用新镜像重建 `infinite-canvas` 容器（映射 `127.0.0.1:3010:3000`，nginx `proxy_pass http://127.0.0.1:3010` 不用改）。
+- 验证：`curl -s https://huabu.jiucaihezi.studio/` 返回 200，静态资源有变化时核对对应文件内容；浏览器需强刷。部署与域名细节见 `deploy/README.md` 和 `docs/content/docs/overview/custom-domain.mdx`。
 
 ## PR 审查与处理
 
