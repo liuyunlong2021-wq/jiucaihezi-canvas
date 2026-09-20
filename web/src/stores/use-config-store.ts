@@ -78,6 +78,25 @@ const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
 export const LOCAL_PROXY_PACKAGE = "@basketikun/canvas-proxy";
 export const DEFAULT_LOCAL_PROXY_URL = "http://127.0.0.1:23210";
 
+/** 预置渠道：接口地址和常用模型已经填好，用户只需补自己的 API Key。 */
+export const JIUCAIHEZI_BASE_URL = "https://api.jiucaihezi.studio/v1";
+/** 用户在该渠道获取 API Key 的地址。 */
+export const JIUCAIHEZI_KEY_URL = "https://api.jiucaihezi.studio/keys";
+const JIUCAIHEZI_HOST = new URL(JIUCAIHEZI_BASE_URL).host;
+
+/** 是否为预置的韭菜盒子渠道；按接口地址判断，用户自建的同一地址渠道也适用。 */
+export function isJiucaiheziChannel(baseUrl: string) {
+    return baseUrl.toLowerCase().includes(JIUCAIHEZI_HOST);
+}
+const JIUCAIHEZI_MODELS: ChannelModel[] = [
+    { name: "gpt-image-2.5-1k", capability: "image" },
+    { name: "gpt-image-2-1k", capability: "image" },
+    { name: "minimax_h3_zm_u24", capability: "video" },
+    { name: "minimax_h3_image_audio_to_video_v2_15s", capability: "video" },
+    { name: "山seedance2.5", capability: "video" },
+    { name: "海seedance2.5", capability: "video" },
+];
+
 export const defaultConfig: AiConfig = {
     channelMode: "local",
     baseUrl: OPENAI_BASE_URL,
@@ -96,6 +115,14 @@ export const defaultConfig: AiConfig = {
                 { name: "gpt-5.5", capability: "text" },
                 { name: "gpt-4o-mini-tts", capability: "audio" },
             ],
+        },
+        {
+            id: "jiucaihezi",
+            name: "韭菜盒子",
+            baseUrl: JIUCAIHEZI_BASE_URL,
+            apiKey: "",
+            apiFormat: "openai",
+            models: JIUCAIHEZI_MODELS.map((model) => ({ ...model })),
         },
     ],
     model: "default::gpt-image-2",
@@ -249,7 +276,9 @@ export const useConfigStore = create<ConfigStore>()(
                 const persistedConfig = (persistedState.config || {}) as Partial<AiConfig>;
                 const persistedWebdav = (persistedState.webdav || {}) as Partial<WebdavSyncConfig>;
                 const config = { ...defaultConfig, ...persistedConfig };
-                if (!Array.isArray(persistedConfig.channels)) config.channels = [];
+                // 本地没有存过渠道时用默认配置里的预置渠道（而不是清空后临时拼一个），
+                // 这样新用户能直接看到预置好接口地址的渠道，只需补 API Key。
+                if (!Array.isArray(persistedConfig.channels)) config.channels = defaultConfig.channels;
                 const channels = normalizeChannels(config);
                 const models = modelOptionsFromChannels(channels);
                 return {

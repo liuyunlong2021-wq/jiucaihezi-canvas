@@ -485,6 +485,7 @@ export default {
             numberedName: "渠道 {{count}}",
             modelCount: "{{count}} 个模型",
             missingUrl: "未填写接口地址",
+            getKey: "获取 Key",
             keepOne: "至少保留一个渠道",
             defaultName: "默认渠道",
             newName: "新渠道",

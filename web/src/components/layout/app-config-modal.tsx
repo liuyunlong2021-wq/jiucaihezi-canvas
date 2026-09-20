@@ -1,6 +1,6 @@
 import { App, Button, Form, Input, Modal, Progress, Select, Tabs } from "antd";
 import type { TFunction } from "i18next";
-import { Cloud, Download, Pencil, Plus, RefreshCw, Trash2, Upload, Wifi } from "lucide-react";
+import { Cloud, Download, KeyRound, Pencil, Plus, RefreshCw, Trash2, Upload, Wifi } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -14,7 +14,7 @@ import { exportAppConfig, importAppConfig } from "@/services/config-file";
 import { syncAppDataToWebdav, type AppSyncDomainKey, type AppSyncProgressEvent } from "@/services/app-sync";
 import { testWebdavConnection, WEBDAV_MANIFEST_FILE_NAME } from "@/services/webdav-sync";
 import { audioFormatOptions, audioVoiceOptions, normalizeAudioSpeedValue } from "@/lib/audio-generation";
-import { createModelChannel, modelOptionsFromChannels, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore, type AiConfig, type ApiCallFormat, type ConfigTabKey, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import { createModelChannel, isJiucaiheziChannel, JIUCAIHEZI_KEY_URL, modelOptionsFromChannels, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore, type AiConfig, type ApiCallFormat, type ConfigTabKey, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
 
 type ModelGroup = {
     capability: ModelCapability;
@@ -201,6 +201,11 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                                 </div>
                                             </div>
                                             <div className="flex shrink-0 gap-2">
+                                                {isJiucaiheziChannel(channel.baseUrl) ? (
+                                                    <Button size="small" icon={<KeyRound className="size-3.5" />} onClick={() => window.open(JIUCAIHEZI_KEY_URL, "_blank", "noopener,noreferrer")}>
+                                                        {t("config.channels.getKey")}
+                                                    </Button>
+                                                ) : null}
                                                 <Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => setEditingChannelId(channel.id)}>
                                                     {t("common.edit")}
                                                 </Button>
