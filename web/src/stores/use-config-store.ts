@@ -4,7 +4,8 @@ import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
-import { resolveBuiltinModelScript } from "@/lib/model-scripts";
+import { VIDEO_SECONDS_DEFAULT } from "@/lib/media-size";
+import { resolveBuiltinModelScript, RH_CHANNEL_MODELS } from "@/lib/model-scripts";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -122,7 +123,7 @@ export const defaultConfig: AiConfig = {
             baseUrl: JIUCAIHEZI_BASE_URL,
             apiKey: "",
             apiFormat: "openai",
-            models: JIUCAIHEZI_MODELS.map((model) => ({ ...model })),
+            models: [...JIUCAIHEZI_MODELS, ...RH_CHANNEL_MODELS].map((model) => ({ ...model })),
         },
     ],
     model: "default::gpt-image-2",
@@ -134,16 +135,16 @@ export const defaultConfig: AiConfig = {
     audioFormat: "mp3",
     audioSpeed: "1",
     audioInstructions: "",
-    videoSeconds: "6",
+    videoSeconds: String(VIDEO_SECONDS_DEFAULT),
     vquality: "720",
     videoGenerateAudio: "true",
     videoWatermark: "false",
-    videoMode: "frames",
+    videoMode: "reference",
     systemPrompt: "",
     reasoningEffort: "auto",
     models: ["default::gpt-image-2", "default::grok-imagine-video", "default::gpt-5.5", "default::gpt-4o-mini-tts"],
     quality: "auto",
-    size: "1:1",
+    size: "9:16",
     background: "",
     count: "1",
     canvasImageCount: "3",
@@ -235,6 +236,25 @@ function isAiConfigReady(config: AiConfig, model: string) {
     return Boolean(model.trim() && channel.baseUrl.trim() && channel.apiKey.trim());
 }
 
+/** 本地配置的持久化版本。v2 起画幅默认 9:16、视频模式默认全能参考。 */
+const CONFIG_STORE_VERSION = 2;
+
+/**
+ * 上一版的默认值：画幅 1:1、视频模式首尾帧。
+ * 用户没改过这两项时，跟着新默认值走；改过的保持原样。
+ */
+const LEGACY_DEFAULTS = { size: "1:1", videoMode: "frames" };
+
+export function migratePersistedConfig(persisted: unknown, version: number) {
+    const state = (persisted || {}) as Pick<ConfigStore, "config" | "webdav">;
+    const config = { ...(state.config || {}) } as AiConfig;
+    if (version < CONFIG_STORE_VERSION) {
+        if (config.size === LEGACY_DEFAULTS.size) config.size = defaultConfig.size;
+        if (config.videoMode === LEGACY_DEFAULTS.videoMode) config.videoMode = defaultConfig.videoMode;
+    }
+    return { ...state, config };
+}
+
 export const useConfigStore = create<ConfigStore>()(
     persist(
         (set, get) => ({
@@ -270,6 +290,8 @@ export const useConfigStore = create<ConfigStore>()(
         }),
         {
             name: CONFIG_STORE_KEY,
+            version: CONFIG_STORE_VERSION,
+            migrate: (persisted, version) => migratePersistedConfig(persisted, version),
             partialize: (state) => ({ config: state.config, webdav: state.webdav }),
             merge: (persisted, current) => {
                 const persistedState = (persisted || {}) as Partial<ConfigStore>;
@@ -299,7 +321,7 @@ export const useConfigStore = create<ConfigStore>()(
                         audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
                         audioInstructions: config.audioInstructions || "",
                         reasoningEffort: config.reasoningEffort || "auto",
-                        videoSeconds: config.videoSeconds || "6",
+                        videoSeconds: config.videoSeconds || String(VIDEO_SECONDS_DEFAULT),
                         vquality: config.vquality || "720",
                         videoGenerateAudio: config.videoGenerateAudio || "true",
                         videoWatermark: config.videoWatermark || "false",

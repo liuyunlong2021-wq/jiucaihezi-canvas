@@ -43,8 +43,21 @@ export const videoRatioOptions = [
     { value: "auto", width: 0, height: 0 },
 ] as const;
 
+export type VideoSecondsLimit = { min: number; max: number };
+
 export const VIDEO_SECONDS_MIN = 4;
 export const VIDEO_SECONDS_MAX = 30;
+export const VIDEO_SECONDS_DEFAULT = 5;
+export const videoSecondsRange: VideoSecondsLimit = { min: VIDEO_SECONDS_MIN, max: VIDEO_SECONDS_MAX };
+
+/** MiniMax H3 系列（含 RH 渠道的 8 个应用）只接受 1–15 秒，其余视频模型沿用 4–30 秒。 */
+const MINIMAX_VIDEO_SECONDS: VideoSecondsLimit = { min: 1, max: 15 };
+const MINIMAX_MODEL_PATTERN = /rh-aiapp|minimax_h3_/i;
+
+/** 按模型名返回时长范围；名字可以带渠道前缀。 */
+export function resolveVideoSecondsLimit(name: string): VideoSecondsLimit {
+    return MINIMAX_MODEL_PATTERN.test(name || "") ? MINIMAX_VIDEO_SECONDS : videoSecondsRange;
+}
 
 export function normalizeMediaScale(value: string | undefined) {
     const scale = String(value || "").trim().toLowerCase();
@@ -99,9 +112,9 @@ export function readMediaDimensions(size: string, scale: string, ratio: string) 
     return parsePixelSize(computed) || { width: 0, height: 0 };
 }
 
-export function clampVideoSeconds(value: string) {
-    const seconds = Math.floor(Number(value) || 6);
-    return String(Math.max(VIDEO_SECONDS_MIN, Math.min(VIDEO_SECONDS_MAX, seconds)));
+export function clampVideoSeconds(value: string, limit: VideoSecondsLimit = videoSecondsRange) {
+    const seconds = Math.floor(Number(value) || VIDEO_SECONDS_DEFAULT);
+    return String(Math.max(limit.min, Math.min(limit.max, seconds)));
 }
 
 export function parseVideoResolution(value: string | undefined) {

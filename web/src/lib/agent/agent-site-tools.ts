@@ -4,9 +4,9 @@ import i18n from "@/i18n";
 import { fetchPrompts } from "@/services/api/prompts";
 import { uploadImage } from "@/services/image-storage";
 import { imageAspectOptions, imageQualityOptions, imageScaleOptions } from "@/components/image-settings-panel";
-import { videoResolutionOptions, videoSecondsRange, videoSizeOptions } from "@/components/video-settings-panel";
+import { videoResolutionOptions, videoSizeOptions } from "@/components/video-settings-panel";
 import type { CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
-import { clampVideoSeconds } from "@/lib/media-size";
+import { clampVideoSeconds, resolveVideoSecondsLimit, VIDEO_SECONDS_DEFAULT } from "@/lib/media-size";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { modelOptionLabel, modelOptionName, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore } from "@/stores/use-config-store";
@@ -195,7 +195,7 @@ function getVideoConfig() {
             model,
             modelName: modelOptionName(model),
             size: config.size || "1280x720",
-            seconds: config.videoSeconds || "6",
+            seconds: config.videoSeconds || String(VIDEO_SECONDS_DEFAULT),
             resolution: config.vquality || "720",
             generateAudio: config.videoGenerateAudio !== "false",
             watermark: config.videoWatermark === "true",
@@ -203,7 +203,7 @@ function getVideoConfig() {
         },
         models: selectableModelsByCapability(config, "video").map((value) => ({ value, label: modelOptionLabel(config, value) })),
         sizeOptions: videoSizeOptions,
-        secondsRange: videoSecondsRange,
+        secondsRange: resolveVideoSecondsLimit(model),
         resolutionOptions: videoResolutionOptions,
         modeOptions: [
             { value: "frames", label: i18n.t("settingsPanels.video.modes.frames") },
@@ -225,7 +225,8 @@ function runVideoWorkbench(input: SiteToolInput, navigate: NavigateFunction) {
         applied.size = input.size;
     }
     if (input.seconds != null && String(input.seconds).trim()) {
-        const seconds = clampVideoSeconds(String(input.seconds));
+        const current = useConfigStore.getState().config;
+        const seconds = clampVideoSeconds(String(input.seconds), resolveVideoSecondsLimit(current.model || current.videoModel || ""));
         configStore.updateConfig("videoSeconds", seconds);
         applied.seconds = seconds;
     }
