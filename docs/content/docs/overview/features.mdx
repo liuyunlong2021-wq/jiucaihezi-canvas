@@ -58,7 +58,18 @@ See [Third-party Prompt Sources](/docs/overview/third-party-prompt-repositories)
 
 - Export and import channel, model, generation, prompt-source, and WebDAV settings.
 - Store application data and API credentials locally in the browser.
+- Preset JiuCaiHeZi channel: the base URL is filled in already, so entering your own API key is enough to use the preset image, video, and RH app models.
 - Use WebDAV for optional cross-device synchronization.
+
+## Preset JiuCaiHeZi channel models
+
+The JiuCaiHeZi channel presets the following models, usable right after entering an API key:
+
+- Images: `gpt-image-2.5-1k`, `gpt-image-2-1k`.
+- Videos: `minimax_h3_zm_u24`, `minimax_h3_image_audio_to_video_v2_15s`, `山seedance2.5`, `海seedance2.5`.
+- RH apps (`rh-aiapp｜app name`): text to video, first-frame image to video, first and last frame, two, three, four, and five references, Wen-MiniMax, and Wu-MiniMax, nine in total.
+
+RH apps need no custom call script: picking an app submits its own app id, references beyond the app's limit are trimmed to that limit, and the text-to-video app sends no references at all. Wen-MiniMax and Wu-MiniMax are two branches of one app that generate a drama or an action video respectively, with a 30 second duration limit; other RH apps and `minimax_h3_*` models stay at 1–15 seconds. The RH app list inside the channel is refreshed automatically with each release.
 
 ## Current limitations
 
