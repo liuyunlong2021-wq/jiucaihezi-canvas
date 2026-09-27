@@ -1,3 +1,5 @@
+import { resolveRhApp } from "@/lib/model-scripts";
+
 export const mediaScaleOptions = ["1k", "2k", "4k", "auto"] as const;
 export const mediaRatioOptions = [
     { value: "1:1", width: 1, height: 1 },
@@ -50,12 +52,14 @@ export const VIDEO_SECONDS_MAX = 30;
 export const VIDEO_SECONDS_DEFAULT = 5;
 export const videoSecondsRange: VideoSecondsLimit = { min: VIDEO_SECONDS_MIN, max: VIDEO_SECONDS_MAX };
 
-/** MiniMax H3 系列（含 RH 渠道的 8 个应用）只接受 1–15 秒，其余视频模型沿用 4–30 秒。 */
+/** MiniMax H3 系列只接受 1–15 秒，其余视频模型沿用 4–30 秒；RH 应用各自的时长上限以应用表为准。 */
 const MINIMAX_VIDEO_SECONDS: VideoSecondsLimit = { min: 1, max: 15 };
 const MINIMAX_MODEL_PATTERN = /rh-aiapp|minimax_h3_/i;
 
 /** 按模型名返回时长范围；名字可以带渠道前缀。 */
 export function resolveVideoSecondsLimit(name: string): VideoSecondsLimit {
+    const rhApp = resolveRhApp(name);
+    if (rhApp) return { min: 1, max: rhApp.maxSeconds };
     return MINIMAX_MODEL_PATTERN.test(name || "") ? MINIMAX_VIDEO_SECONDS : videoSecondsRange;
 }
 

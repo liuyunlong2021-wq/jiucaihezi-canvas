@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
 import { VIDEO_SECONDS_DEFAULT } from "@/lib/media-size";
-import { resolveBuiltinModelScript, RH_CHANNEL_MODELS } from "@/lib/model-scripts";
+import { resolveBuiltinModelScript, RH_CHANNEL_MODELS, syncRhChannelModels } from "@/lib/model-scripts";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -128,7 +128,8 @@ export const defaultConfig: AiConfig = {
     ],
     model: "default::gpt-image-2",
     imageModel: "default::gpt-image-2",
-    videoModel: "default::grok-imagine-video",
+    // 默认视频模型走 RH 的文武双修（文戏），用户可在配置里改。
+    videoModel: "jiucaihezi::rh-aiapp｜文-MiniMax",
     textModel: "default::gpt-5.5",
     audioModel: "default::gpt-4o-mini-tts",
     audioVoice: "alloy",
@@ -301,7 +302,8 @@ export const useConfigStore = create<ConfigStore>()(
                 // 本地没有存过渠道时用默认配置里的预置渠道（而不是清空后临时拼一个），
                 // 这样新用户能直接看到预置好接口地址的渠道，只需补 API Key。
                 if (!Array.isArray(persistedConfig.channels)) config.channels = defaultConfig.channels;
-                const channels = normalizeChannels(config);
+                // 韭菜盒子渠道里的 RH 应用由代码维护，这里刷成最新（下线的旧应用会被换掉）。
+                const channels = normalizeChannels(config).map((channel) => (isJiucaiheziChannel(channel.baseUrl) ? { ...channel, models: syncRhChannelModels(channel.models) } : channel));
                 const models = modelOptionsFromChannels(channels);
                 return {
                     ...current,

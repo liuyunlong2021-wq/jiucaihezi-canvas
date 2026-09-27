@@ -140,13 +140,18 @@ return await generateVideo({ prompt: prompt, images: images, params: params, mod
 `;
 
 /**
- * RH 渠道的 8 个 Minimax-h3 应用：接口只认统一模型名 `rh-aiapp`，用 `webappId` 选应用。
- * 画布没有「应用」这一层，所以把应用名放在模型名后缀里，脚本按后缀还原编号；
- * `maxImages` 是该应用能接受的参考图张数上限。
+ * RH 渠道的 Minimax-h3 应用：接口只认统一模型名 `rh-aiapp`，用 `webappId` 选应用。
+ * 画布没有「应用」这一层，所以把应用名放在模型名后缀里，脚本按后缀还原编号。
+ * `maxImages` 是该应用能接受的参考图张数上限；`maxSeconds` 是时长上限，不写按 15 秒；
+ * `extras` 是应用自己的工作流参数（同一个应用靠参数拆成多个模型项时用）。
  */
 const RH_APP_MODEL = "rh-aiapp";
 const RH_APP_SEPARATOR = "｜";
-const RH_APPS = [
+const RH_APP_PREFIX = `${RH_APP_MODEL}${RH_APP_SEPARATOR}`;
+const RH_APP_DEFAULT_MAX_SECONDS = 15;
+type RhAppDefinition = { name: string; webappId: string; maxImages: number; maxSeconds?: number; extras?: Record<string, number> };
+export type RhApp = { webappId: string; maxImages: number; maxSeconds: number; extras: Record<string, number> };
+const RH_APPS: RhAppDefinition[] = [
     { name: "Minimax-h3 文生视频", webappId: "2093604127250149377", maxImages: 0 },
     { name: "Minimax-h3 首帧图生视频", webappId: "2093571735550521345", maxImages: 1 },
     { name: "Minimax-h3 首尾帧", webappId: "2093579373894000642", maxImages: 2 },
@@ -154,20 +159,43 @@ const RH_APPS = [
     { name: "Minimax-h3 多参3图", webappId: "2093662476146667522", maxImages: 3 },
     { name: "Minimax-h3 多参-4图", webappId: "2093651661213491202", maxImages: 4 },
     { name: "Minimax-h3多参5图", webappId: "2093706819385516034", maxImages: 5 },
-    { name: "文武双修", webappId: "2101840271142117377", maxImages: 9 },
+    // 文武双修：同一个应用靠工作流参数选文戏(0)/武戏(1)，且支持 30 秒，所以拆成两个模型项。
+    { name: "文-MiniMax", webappId: "2101840271142117377", maxImages: 9, maxSeconds: 30, extras: { "[65]easy anythingIndexSwitch-index": 0 } },
+    { name: "武-MiniMax", webappId: "2101840271142117377", maxImages: 9, maxSeconds: 30, extras: { "[65]easy anythingIndexSwitch-index": 1 } },
 ];
 
+/** RH 应用能力表：内置脚本用它生成 APPS，前端也用它查时长上限。 */
+const RH_APP_TABLE = Object.fromEntries(RH_APPS.map((app) => [app.name, { webappId: app.webappId, maxImages: app.maxImages, maxSeconds: app.maxSeconds || RH_APP_DEFAULT_MAX_SECONDS, extras: app.extras || {} }])) as Record<string, RhApp>;
+
 /** 渠道里预置的 RH 模型项：选到哪个应用，脚本就提交对应的 webappId。 */
-export const RH_CHANNEL_MODELS: Array<{ name: string; capability: ModelCapability }> = RH_APPS.map((app) => ({ name: `${RH_APP_MODEL}${RH_APP_SEPARATOR}${app.name}`, capability: "video" }));
+export const RH_CHANNEL_MODELS: Array<{ name: string; capability: ModelCapability }> = RH_APPS.map((app) => ({ name: `${RH_APP_PREFIX}${app.name}`, capability: "video" }));
+
+/** 按模型名（可带渠道前缀）取应用能力；不是 RH 应用时返回 null。 */
+export function resolveRhApp(name: string): RhApp | null {
+    const key = String(name || "").split(RH_APP_SEPARATOR).pop()?.trim() || "";
+    return RH_APP_TABLE[key] || null;
+}
+
+/**
+ * 把渠道里的 RH 应用项刷成代码里的最新列表：删掉已下线的（如旧的「文武双修」），补齐新增的，
+ * 用户自己加的其他模型和已有同名项都保留。
+ */
+export function syncRhChannelModels<T extends { name: string; capability: ModelCapability }>(models: T[]): T[] {
+    const existing = new Map(models.map((model) => [model.name, model]));
+    const others = models.filter((model) => !String(model.name).startsWith(RH_APP_PREFIX));
+    const apps = RH_CHANNEL_MODELS.map((model) => existing.get(model.name) || (model as T));
+    return [...others, ...apps];
+}
 
 const RH_AIAAP_SCRIPT = `
 /**
  * RH 渠道 Minimax-h3 应用：JSON 请求体 + 参考素材换公网 URL。
  * 契约要点：model 固定 rh-aiapp，用 webappId 选应用（服务端只读 extra_fields.webappId，
- * 顶层那份一并写上给转发层）；duration 1-15 整数；ratio 八种取值（默认 9:16）；
- * 没有 quality 字段；images 张数是上限（超过返回 400），"文生视频"不传 images。
+ * 顶层那份一并写上给转发层）；duration 1-30 整数，按应用上限收窄；ratio 八种取值（默认 9:16）；
+ * 没有 quality 字段；images 张数是上限（超过返回 400），"文生视频"不传 images；
+ * extras 是该应用自己的工作流参数（文武双修用它选文戏/武戏）。
  */
-const APPS = ${JSON.stringify(Object.fromEntries(RH_APPS.map((app) => [app.name, { webappId: app.webappId, maxImages: app.maxImages }])), null, 2)};
+const APPS = ${JSON.stringify(RH_APP_TABLE, null, 2)};
 
 async function generateVideo({ prompt, images, params: { seconds, ratio }, model, baseUrl, apiKey, request, http, poll }) {
   const app = APPS[String(model).split(${JSON.stringify(RH_APP_SEPARATOR)}).pop().trim()];
@@ -200,9 +228,9 @@ async function generateVideo({ prompt, images, params: { seconds, ratio }, model
     model: ${JSON.stringify(RH_APP_MODEL)},
     // 服务端只从 extra_fields.webappId 取应用编号，顶层那份是给平台转发层用的，两处都写。
     webappId: app.webappId,
-    extra_fields: { webappId: app.webappId },
+    extra_fields: Object.assign({ webappId: app.webappId }, app.extras),
     prompt: prompt,
-    duration: Math.min(15, Math.max(1, Math.round(Number(seconds) || 5))),
+    duration: Math.min(app.maxSeconds, Math.max(1, Math.round(Number(seconds) || 5))),
     ratio: ratio && ratio !== "auto" ? ratio : "9:16",
   };
   // 参考图只取该应用的上限张数：少传不报错，多传会 400；张数为 0 时整个字段省略。
