@@ -5,6 +5,8 @@ description: Implemented changes that still need manual verification
 
 # Pending Tests
 
+- Jiucaihezi Wen/Wu MiniMax: verify built-in dynamic-node submission bypasses old scripts, preserves complete nodes and consistent metadata mirrors, clears empty image slots, applies current duration/ratio, and selects drama index 0/1. Refresh must reuse the saved task ID. Node contract check passed; real public generation remains unverified.
+
 The current release needs manual verification in these areas:
 
 - Video defaults: after refreshing a browser that already had local config, the frame should migrate from 1:1 to 9:16 and the mode from First & last frame to General reference only when they were never changed by hand; a hand-picked value such as 4:3 must stay as-is. A newly created video node should read 720p · 9:16 · 5s · General reference, and the image settings panel should also default to 9:16.

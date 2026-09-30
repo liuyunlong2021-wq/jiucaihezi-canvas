@@ -8,6 +8,8 @@ import { getMediaBlob, resolveMediaUrl, uploadMediaFile, type UploadedFile } fro
 import { imageToDataUrl } from "@/services/image-storage";
 import { boolConfig, buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig } from "@/stores/use-config-store";
 import { runModelPlugin } from "./model-plugin";
+import { resolveRhApp } from "@/lib/model-scripts";
+import { buildWenwuRequest, WENWU_APP_ID } from "./rh-aiapp-nodes";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
@@ -72,11 +74,32 @@ function videoTaskFailed(message: string) {
 export async function createVideoGenerationTask(config: AiConfig, prompt: string, references: ReferenceImage[] = [], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
     const selectedModel = (config.model || config.videoModel).trim();
     const requestConfig = resolveModelRequestConfig(config, selectedModel);
+    if (isWenwuModel(requestConfig, selectedModel)) return createWenwuVideoTask(requestConfig, selectedModel, prompt, references, options);
     const script = resolveModelScript(config, selectedModel);
     if (script) return createPluginVideoTask(requestConfig, selectedModel, script, prompt, references, options);
     assertVideoConfig(requestConfig, requestConfig.model);
     if (requestConfig.apiFormat === "gemini") return createGeminiVideoTask(requestConfig, selectedModel, prompt, references, options);
     return createOpenAIVideoTask(requestConfig, selectedModel, prompt, references, options);
+}
+
+function isWenwuModel(config: AiConfig, model: string) {
+    return /^https:\/\/api\.jiucaihezi\.studio(?:\/|$)/i.test(config.baseUrl.trim()) && resolveRhApp(model)?.webappId === WENWU_APP_ID;
+}
+
+async function createWenwuVideoTask(config: AiConfig, model: string, prompt: string, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
+    assertVideoConfig(config, model);
+    if (options?.videos?.length || options?.audios?.length) throw new Error("文武双修只支持参考图片，请移除参考视频和音频");
+    try {
+        const root = config.baseUrl.trim().replace(/\/+$/, "").replace(/\/v1$/i, "");
+        const { data } = await axios.get<{ nodeInfoList?: unknown }>(withLocalProxy(`${root}/api/runninghub/app-info?webappId=${WENWU_APP_ID}`), { headers: aiHeaders(config), signal: options?.signal });
+        const images = await Promise.all(references.map((image) => imageToDataUrl(image)));
+        const body = buildWenwuRequest(data.nodeInfoList, prompt, images, config.videoSeconds, videoAspectRatio(config.size), String(resolveRhApp(model)?.extras["[65]easy anythingIndexSwitch-index"] ?? 0));
+        const created = unwrapVideoResponse((await axios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config, "application/json"), signal: options?.signal })).data);
+        if (!created.id) throw new Error(apiText("noVideoTaskId"));
+        return { id: created.id, provider: "openai", model };
+    } catch (error) {
+        throw new Error(readAxiosError(error, apiText("videoTaskCreateFailed")));
+    }
 }
 
 export async function pollVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: RequestOptions): Promise<VideoGenerationTaskState> {
