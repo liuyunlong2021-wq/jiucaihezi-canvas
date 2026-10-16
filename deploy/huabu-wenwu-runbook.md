@@ -4,7 +4,7 @@
 
 线上地址：`https://huabu.jiucaihezi.studio`。实际部署仓库是 `/Users/by3/Documents/jiucaihezi-canvas`，远端为 `liuyunlong2021-wq/jiucaihezi-canvas`；不是 `/Users/by3/Documents/infinite-canvas` 的上游仓库。
 
-历史修复提交：`b9b031a`；此前服务器镜像：`jiucaihezi-canvas:wenwu-b9b031a`，为源码构建的本地镜像。此次发布版本为 `v0.20.1`，包含文武双修修复、参考图交互、默认渠道和生成数量调整；必须等本 fork 的 Docker image Actions 成功后，才能拉取 `ghcr.io/liuyunlong2021-wq/jiucaihezi-canvas:v0.20.1`。分支 `codex/wenwu-node-contract` 尚未合入 main；该版本从修复分支打 tag 构建，不覆盖已有 `v0.20.0` 标签。
+历史修复提交：`b9b031a`；此前服务器镜像：`jiucaihezi-canvas:wenwu-b9b031a`，为源码构建的本地镜像。当前发布版本为 `v0.20.1`，包含文武双修修复、参考图交互、默认渠道和生成数量调整；本 fork 的 Docker image Actions 已成功，服务器已切换到 `ghcr.io/liuyunlong2021-wq/jiucaihezi-canvas:v0.20.1`，用户已确认线上显示该版本。该版本从修复分支打 tag 构建，发布提交 `fa1c81e` 已快进合入 `main`，未覆盖已有 `v0.20.0` 标签。
 
 用户选择“武-MiniMax”，更新画布容器并补齐 API 的跨域白名单后反馈生成成功。此结论不扩展到文戏、其他七个 RH 应用、任务刷新恢复或计费的逐项验收。
 
@@ -63,7 +63,7 @@ curl -I https://huabu.jiucaihezi.studio/
 
 正常应返回 200，但页面 200 只证明静态站可访问，不证明视频 API 可用。核对页面引用的新 JS 资源并在浏览器用 `⌘⇧R` 强刷，再测试生成。
 
-正式版本镜像部署按 [AGENTS.md](../AGENTS.md) 的发版本流程：更新 VERSION/CHANGELOG、提交代码、推送版本 tag、等待 Docker image Actions 成功，再拉取 fork 命名空间的固定版本镜像。此次从修复分支发布；后续合入 main 仍须单独确认。不要仅推分支就认为镜像已更新，也不要使用上游镜像覆盖 fork 的修复。
+正式版本镜像部署按 [AGENTS.md](../AGENTS.md) 的发版本流程：更新 VERSION/CHANGELOG、提交代码、推送版本 tag、等待 Docker image Actions 成功，再拉取 fork 命名空间的固定版本镜像。此次发布代码已合入 `main`；后续从主线继续开发。不要仅推分支就认为镜像已更新，也不要使用上游镜像覆盖 fork 的修复。
 
 ## 回滚
 
