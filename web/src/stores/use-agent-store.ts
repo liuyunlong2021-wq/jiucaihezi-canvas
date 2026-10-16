@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import i18n from "@/i18n";
+import { agentSessionMode, type AgentConnectionMode } from "@/lib/agent/agent-url-bootstrap";
 
 import type { CanvasAgentOp, CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
@@ -49,6 +50,7 @@ type AgentStore = {
     panelMounted: boolean;
     panelClosing: boolean;
     canvasContext: AgentCanvasContext | null;
+    connectionMode: AgentConnectionMode;
     url: string;
     token: string;
     connected: boolean;
@@ -101,6 +103,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     panelMounted: true,
     panelClosing: false,
     canvasContext: null,
+    connectionMode: typeof window === "undefined" ? "codex" : agentSessionMode(window.location.hash, sessionStorage.getItem("canvas-agent-mode")),
     url: typeof window === "undefined" ? "http://127.0.0.1:17371" : localStorage.getItem("canvas-agent-url") || "http://127.0.0.1:17371",
     token: typeof window === "undefined" ? "" : localStorage.getItem("canvas-agent-token") || "",
     connected: false,
@@ -121,7 +124,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     workspacePath: "",
     loadingThreads: false,
     activeTab: "setup",
-    confirmTools: false,
+    confirmTools: typeof window === "undefined" ? false : localStorage.getItem("canvas-agent-confirm-tools") === "true",
     permissionMode: typeof window === "undefined" ? "request" : (localStorage.getItem("canvas-agent-permission-mode") as AgentPermissionMode) || "request",
     models: [],
     model: typeof window === "undefined" ? "" : localStorage.getItem("canvas-agent-model") || "",
