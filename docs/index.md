@@ -37,6 +37,10 @@
 - [Pending Tests](/docs/progress/pending-test)
 - [TODO](/docs/progress/todo)
 
+## Production Operations
+
+- [线上画布部署与文武双修排障](../deploy/huabu-wenwu-runbook.md) — 实际 fork 仓库、源码部署、镜像更新、回滚、节点发现 CORS 与成功验收边界。
+
 ## Notes
 
 - Canvas projects and My Assets are primarily stored in the browser. WebDAV can be configured for cross-device synchronization.

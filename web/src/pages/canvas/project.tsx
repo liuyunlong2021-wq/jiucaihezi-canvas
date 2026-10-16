@@ -173,7 +173,7 @@ function InfiniteCanvasPage() {
     const openAgentPanel = useAgentStore((state) => state.openPanel);
     const containerRef = useRef<HTMLDivElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
-    const uploadTargetRef = useRef<{ nodeId?: string; position?: Position } | null>(null);
+    const uploadTargetRef = useRef<{ nodeId?: string; position?: Position; asReferenceToNodeId?: string } | null>(null);
     const clipboardRef = useRef<CanvasClipboard | null>(null);
     const historyRef = useRef<{ past: CanvasHistoryEntry[]; future: CanvasHistoryEntry[] }>({ past: [], future: [] });
     const lastHistoryRef = useRef<CanvasHistoryEntry | null>(null);
@@ -1458,7 +1458,7 @@ function InfiniteCanvasPage() {
         };
     }, [finishNodeDrag, handleGlobalMouseMove, handleGlobalMouseUp, handleGlobalPointerMove]);
 
-    const createImageFileNode = useCallback(async (file: File, position: Position) => {
+    const createImageFileNode = useCallback(async (file: File, position: Position, options?: { connectToNodeId?: string; selectAndOpen?: boolean }) => {
         const image = await uploadImage(file);
         const size = fitNodeSize(image.width, image.height);
         const id = `image-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -1473,9 +1473,15 @@ function InfiniteCanvasPage() {
         };
 
         setNodes((prev) => [...prev, newNode]);
-        setSelectedNodeIds(new Set([id]));
-        setSelectedConnectionId(null);
-        setDialogNodeId(id);
+        if (options?.connectToNodeId) {
+            setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: id, toNodeId: options.connectToNodeId! }]);
+        }
+        if (options?.selectAndOpen ?? true) {
+            setSelectedNodeIds(new Set([id]));
+            setSelectedConnectionId(null);
+            setDialogNodeId(id);
+        }
+        return newNode;
     }, []);
 
     const createVideoFileNode = useCallback(async (file: File, position: Position) => {
@@ -2123,10 +2129,46 @@ function InfiniteCanvasPage() {
         setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, fontSize } } : node)));
     }, []);
 
-    const handleUploadRequest = useCallback((nodeId?: string, position?: Position) => {
-        uploadTargetRef.current = { nodeId, position };
+    const handleUploadRequest = useCallback((nodeId?: string, position?: Position, asReferenceToNodeId?: string) => {
+        uploadTargetRef.current = { nodeId, position, asReferenceToNodeId };
         imageInputRef.current?.click();
     }, []);
+
+    const uploadReferenceToNode = useCallback((nodeId: string) => {
+        handleUploadRequest(undefined, undefined, nodeId);
+    }, [handleUploadRequest]);
+
+    const uploadReferenceFilesToNode = useCallback(async (targetNodeId: string, files: File[]) => {
+        const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+        if (!imageFiles.length) return;
+        const targetNode = nodesRef.current.find((n) => n.id === targetNodeId);
+        const basePosition = targetNode
+            ? { x: targetNode.position.x - 360, y: targetNode.position.y }
+            : getCanvasCenter();
+        for (let i = 0; i < imageFiles.length; i++) {
+            const offsetPos = { x: basePosition.x, y: basePosition.y + i * 260 };
+            await createImageFileNode(imageFiles[i], offsetPos, {
+                connectToNodeId: targetNodeId,
+                selectAndOpen: false,
+            });
+        }
+        setSelectedNodeIds(new Set([targetNodeId]));
+        setDialogNodeId(targetNodeId);
+    }, [createImageFileNode, getCanvasCenter]);
+
+    const addEmptyImageReferenceNode = useCallback((targetNodeId: string) => {
+        const targetNode = nodesRef.current.find((n) => n.id === targetNodeId);
+        const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
+        const position: Position = targetNode
+            ? { x: targetNode.position.x - spec.width - 60, y: targetNode.position.y }
+            : getCanvasCenter();
+        const newNode = createCanvasNode(CanvasNodeType.Image, position);
+        setNodes((prev) => [...prev, newNode]);
+        setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: newNode.id, toNodeId: targetNodeId }]);
+        setSelectedNodeIds(new Set([newNode.id]));
+        setSelectedConnectionId(null);
+        setDialogNodeId(newNode.id);
+    }, [getCanvasCenter]);
 
     const handleImageInputChange = useCallback(
         async (event: ReactChangeEvent<HTMLInputElement>) => {
@@ -2148,8 +2190,27 @@ function InfiniteCanvasPage() {
                 );
             const STAGGER = 40; // Offset between multiple imported files.
 
-            // When replacing a target node, use the first file as the replacement and create the rest nearby.
-            if (target?.nodeId) {
+            // When uploading as a reference to an existing node, create image node(s) on the left of target and connect
+            if (target?.asReferenceToNodeId) {
+                const targetNode = nodesRef.current.find((n) => n.id === target.asReferenceToNodeId);
+                const basePos = targetNode
+                    ? { x: targetNode.position.x - 360, y: targetNode.position.y }
+                    : basePosition;
+
+                for (let i = 0; i < files.length; i++) {
+                    const offsetPos = { x: basePos.x, y: basePos.y + i * 260 };
+                    const f = files[i];
+                    if (f.type.startsWith("image/")) {
+                        await createImageFileNode(f, offsetPos, {
+                            connectToNodeId: target.asReferenceToNodeId,
+                            selectAndOpen: false,
+                        });
+                    }
+                }
+                // Keep the target node selected and its prompt panel open
+                setSelectedNodeIds(new Set([target.asReferenceToNodeId]));
+                setDialogNodeId(target.asReferenceToNodeId);
+            } else if (target?.nodeId) {
                 const [first, ...rest] = files;
 
                 // Replace the target node with the first file.
@@ -3062,6 +3123,9 @@ function InfiniteCanvasPage() {
                     onClose={() => setDialogNodeId(null)}
                     onDisconnectReference={disconnectNodeReference}
                     onStartReferenceSelection={startNodeReferenceSelection}
+                    onUploadReference={uploadReferenceToNode}
+                    onDropReferenceFiles={uploadReferenceFilesToNode}
+                    onAddEmptyReference={addEmptyImageReferenceNode}
                 />
             ) : (
                 <CanvasNodePromptPanel
@@ -3076,6 +3140,9 @@ function InfiniteCanvasPage() {
                     onStop={confirmStopGeneration}
                     onDisconnectReference={disconnectNodeReference}
                     onStartReferenceSelection={startNodeReferenceSelection}
+                    onUploadReference={uploadReferenceToNode}
+                    onDropReferenceFiles={uploadReferenceFilesToNode}
+                    onAddEmptyReference={addEmptyImageReferenceNode}
                     modeOverride={getNodeDefinition(panelNode.type)?.useBuiltinPanel?.mode}
                     onImageSettingsOpenChange={(open) => {
                         setNodeImageSettingsOpen(open);
@@ -3083,7 +3150,7 @@ function InfiniteCanvasPage() {
                     }}
                 />
             ),
-        [configInputsById, confirmStopGeneration, connectedNodesByNodeId, disconnectNodeReference, handleConfigNodeChange, handleGenerateNode, handleNodePromptChange, mentionReferencesByNodeId, nodes, renderPluginPanel, runningNodeId, startNodeReferenceSelection],
+        [addEmptyImageReferenceNode, configInputsById, confirmStopGeneration, connectedNodesByNodeId, disconnectNodeReference, handleConfigNodeChange, handleGenerateNode, handleNodePromptChange, mentionReferencesByNodeId, nodes, renderPluginPanel, runningNodeId, startNodeReferenceSelection, uploadReferenceFilesToNode, uploadReferenceToNode],
     );
 
     const renderNodeContentPanel = useCallback(
@@ -3146,7 +3213,7 @@ function InfiniteCanvasPage() {
                     onCanvasMouseDown={(event) => {
                         if (!referencePickerNodeId) handleCanvasMouseDown(event);
                     }}
-                    onCanvasDeselect={referencePickerNodeId ? undefined : deselectCanvas}
+                    onCanvasDeselect={referencePickerNodeId ? exitNodeReferenceSelection : deselectCanvas}
                     onCanvasDoubleClick={(event) => {
                         if (referencePickerNodeId) return;
                         setContextMenu(null);

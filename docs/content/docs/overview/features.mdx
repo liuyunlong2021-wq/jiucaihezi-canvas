@@ -69,10 +69,12 @@ The JiuCaiHeZi channel presets the following models, usable right after entering
 - Videos: `minimax_h3_zm_u24`, `minimax_h3_image_audio_to_video_v2_15s`, `山seedance2.5`, `海seedance2.5`.
 - RH apps (`rh-aiapp｜app name`): text to video, first-frame image to video, first and last frame, two, three, four, and five references, Wen-MiniMax, and Wu-MiniMax, nine in total.
 
-RH apps need no custom call script: picking an app submits its own app id, references beyond the app's limit are trimmed to that limit, and the text-to-video app sends no references at all. Wen-MiniMax and Wu-MiniMax are two branches of one app that generate a drama or an action video respectively, with a 30 second duration limit; other RH apps and `minimax_h3_*` models stay at 1–15 seconds. The RH app list inside the channel is refreshed automatically with each release.
+RH apps need no custom call script: picking an app submits its own app id, the other seven RH apps trim references beyond their limits, and the text-to-video app sends no references at all. Wen-MiniMax and Wu-MiniMax are two branches of one app that generate a drama or an action video respectively, with a 30 second duration limit; other RH apps and `minimax_h3_*` models stay at 1–15 seconds. The RH app list inside the channel is refreshed automatically with each release.
 
 ## Current limitations
 
 - The project is frontend-first and does not provide built-in cloud accounts or cloud storage.
 - API keys remain in browser storage and requests are sent directly to configured providers.
 - Production Docker static-resource paths still require broader deployment verification.
+
+Wen/Wu MiniMax on the public Jiucaihezi provider now use complete dynamic nodes, clear unused image slots, reject more than nine images, and retain task IDs. The user confirmed Wu-MiniMax generation after the frontend update and node-discovery CORS fix; Wen-MiniMax and refresh recovery still require separate verification.

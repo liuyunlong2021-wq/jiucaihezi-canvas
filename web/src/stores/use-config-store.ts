@@ -80,7 +80,7 @@ export const LOCAL_PROXY_PACKAGE = "@basketikun/canvas-proxy";
 export const DEFAULT_LOCAL_PROXY_URL = "http://127.0.0.1:23210";
 
 /** 预置渠道：接口地址和常用模型已经填好，用户只需补自己的 API Key。 */
-export const JIUCAIHEZI_BASE_URL = "https://api.jiucaihezi.studio/v1";
+export const JIUCAIHEZI_BASE_URL = "https://api.jiucaihezi.studio";
 /** 用户在该渠道获取 API Key 的地址。 */
 export const JIUCAIHEZI_KEY_URL = "https://api.jiucaihezi.studio/keys";
 const JIUCAIHEZI_HOST = new URL(JIUCAIHEZI_BASE_URL).host;
@@ -100,25 +100,12 @@ const JIUCAIHEZI_MODELS: ChannelModel[] = [
 
 export const defaultConfig: AiConfig = {
     channelMode: "local",
-    baseUrl: OPENAI_BASE_URL,
+    baseUrl: JIUCAIHEZI_BASE_URL,
     apiKey: "",
     apiFormat: "openai",
     channels: [
         {
             id: "default",
-            name: i18n.t("config.channels.defaultName"),
-            baseUrl: OPENAI_BASE_URL,
-            apiKey: "",
-            apiFormat: "openai",
-            models: [
-                { name: "gpt-image-2", capability: "image" },
-                { name: "grok-imagine-video", capability: "video" },
-                { name: "gpt-5.5", capability: "text" },
-                { name: "gpt-4o-mini-tts", capability: "audio" },
-            ],
-        },
-        {
-            id: "jiucaihezi",
             name: "韭菜盒子",
             baseUrl: JIUCAIHEZI_BASE_URL,
             apiKey: "",
@@ -126,12 +113,12 @@ export const defaultConfig: AiConfig = {
             models: [...JIUCAIHEZI_MODELS, ...RH_CHANNEL_MODELS].map((model) => ({ ...model })),
         },
     ],
-    model: "default::gpt-image-2",
-    imageModel: "default::gpt-image-2",
+    model: "default::gpt-image-2.5-1k",
+    imageModel: "default::gpt-image-2.5-1k",
     // 默认视频模型走 RH 的文武双修（文戏），用户可在配置里改。
-    videoModel: "jiucaihezi::rh-aiapp｜文-MiniMax",
-    textModel: "default::gpt-5.5",
-    audioModel: "default::gpt-4o-mini-tts",
+    videoModel: "default::rh-aiapp｜文-MiniMax",
+    textModel: "",
+    audioModel: "",
     audioVoice: "alloy",
     audioFormat: "mp3",
     audioSpeed: "1",
@@ -143,12 +130,15 @@ export const defaultConfig: AiConfig = {
     videoMode: "reference",
     systemPrompt: "",
     reasoningEffort: "auto",
-    models: ["default::gpt-image-2", "default::grok-imagine-video", "default::gpt-5.5", "default::gpt-4o-mini-tts"],
+    models: [
+        ...JIUCAIHEZI_MODELS.map((model) => `default::${model.name}`),
+        ...RH_CHANNEL_MODELS.map((model) => `default::${model.name}`),
+    ],
     quality: "auto",
     size: "9:16",
     background: "",
     count: "1",
-    canvasImageCount: "3",
+    canvasImageCount: "1",
     proxyEnabled: false,
     proxyUrl: DEFAULT_LOCAL_PROXY_URL,
 };
@@ -328,7 +318,7 @@ export const useConfigStore = create<ConfigStore>()(
                         videoGenerateAudio: config.videoGenerateAudio || "true",
                         videoWatermark: config.videoWatermark || "false",
                         videoMode: config.videoMode === "reference" ? "reference" : "frames",
-                        canvasImageCount: config.canvasImageCount || "3",
+                        canvasImageCount: config.canvasImageCount || "1",
                         proxyEnabled: Boolean(config.proxyEnabled),
                         proxyUrl: config.proxyUrl || DEFAULT_LOCAL_PROXY_URL,
                     },

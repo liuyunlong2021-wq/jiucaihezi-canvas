@@ -1,27 +1,138 @@
-import { FileText, Image as ImageIcon, Music2, Plus, Puzzle, Video, X } from "lucide-react";
-import { Popover } from "antd";
-import { useSyncExternalStore } from "react";
+import { FileText, Image as ImageIcon, Music2, Plus, Puzzle, Upload, Video, X } from "lucide-react";
+import { Dropdown, message, Popover, type MenuProps } from "antd";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
-import { getGroupResourceNodes } from "@/lib/canvas/canvas-resource-references";
+import { getGroupResourceNodes, isCanvasReferenceNode } from "@/lib/canvas/canvas-resource-references";
 import { getImagePreviewRevision, previewUrlFor, subscribeImagePreviews } from "@/services/image-storage";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
-export function CanvasNodeReferenceBar({ nodeId, nodes, connectedNodes, onDisconnect, onStartSelection }: { nodeId: string; nodes: CanvasNodeData[]; connectedNodes: CanvasNodeData[]; onDisconnect?: (fromNodeId: string, toNodeId: string) => void; onStartSelection?: (nodeId: string) => void }) {
+export function CanvasNodeReferenceBar({
+    nodeId,
+    nodes,
+    connectedNodes,
+    onDisconnect,
+    onStartSelection,
+    onUpload,
+    onDropFiles,
+    onAddEmpty,
+}: {
+    nodeId: string;
+    nodes: CanvasNodeData[];
+    connectedNodes: CanvasNodeData[];
+    onDisconnect?: (fromNodeId: string, toNodeId: string) => void;
+    onStartSelection?: (nodeId: string) => void;
+    onUpload?: (nodeId: string) => void;
+    onDropFiles?: (nodeId: string, files: File[]) => void;
+    onAddEmpty?: (nodeId: string) => void;
+}) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [isDragOver, setIsDragOver] = useState(false);
     const references = connectedNodes.flatMap((sourceNode) => (sourceNode.type === CanvasNodeType.Group ? getGroupResourceNodes(sourceNode.id, nodes) : [sourceNode]).map((node) => ({ node, sourceNodeId: sourceNode.id })));
+
+    // Check if there are candidate nodes available on canvas for selection
+    const hasAvailableCandidates = useMemo(() => {
+        const connectedSet = new Set(connectedNodes.map((n) => n.id));
+        return nodes.some((n) => n.id !== nodeId && !connectedSet.has(n.id) && isCanvasReferenceNode(n, nodes));
+    }, [connectedNodes, nodeId, nodes]);
+
+    const handleStartSelection = () => {
+        setMenuOpen(false);
+        if (!hasAvailableCandidates) {
+            message.info(t("canvas.references.noAvailable"));
+            return;
+        }
+        onStartSelection?.(nodeId);
+    };
+
+    const handleDropFiles = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+        const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+        if (!files.length) return;
+        onDropFiles?.(nodeId, files);
+    };
+
+    const menuItems: MenuProps["items"] = [
+        {
+            key: "upload",
+            icon: <Upload className="size-4" />,
+            label: t("canvas.references.upload"),
+            onClick: () => {
+                setMenuOpen(false);
+                onUpload?.(nodeId);
+            },
+        },
+        {
+            key: "create-empty",
+            icon: <ImageIcon className="size-4" />,
+            label: t("canvas.references.createEmpty"),
+            onClick: () => {
+                setMenuOpen(false);
+                onAddEmpty?.(nodeId);
+            },
+        },
+        {
+            type: "divider",
+        },
+        {
+            key: "select-canvas",
+            icon: <Plus className="size-4" />,
+            label: t("canvas.references.select"),
+            onClick: handleStartSelection,
+        },
+    ];
+
     return (
-        <div className="mb-2">
-            <div className="mb-1.5 text-[11px] font-medium" style={{ color: theme.node.muted }}>{t("canvas.references.title")}</div>
+        <div
+            className="mb-2 transition-colors rounded-xl"
+            onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragOver(true);
+            }}
+            onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragOver(false);
+            }}
+            onDrop={handleDropFiles}
+        >
+            <div className="mb-1.5 flex items-center justify-between text-[11px] font-medium" style={{ color: theme.node.muted }}>
+                <span>{t("canvas.references.title")}</span>
+                {isDragOver ? <span className="text-primary font-normal">{t("canvas.references.upload")}</span> : null}
+            </div>
             <div className="thin-scrollbar flex min-h-12 gap-2 overflow-x-auto pb-1">
                 {references.map(({ node, sourceNodeId }) => <ReferenceItem key={`${sourceNodeId}:${node.id}`} node={node} onRemove={() => onDisconnect?.(sourceNodeId, nodeId)} />)}
-                <button type="button" className="grid size-12 shrink-0 place-items-center rounded-xl border bg-transparent transition hover:opacity-70" style={{ borderColor: theme.toolbar.border, color: theme.node.muted }} title={t("canvas.references.select")} onClick={() => onStartSelection?.(nodeId)}>
-                    <Plus className="size-4" />
-                </button>
+                <Dropdown
+                    menu={{ items: menuItems }}
+                    trigger={["click"]}
+                    open={menuOpen}
+                    onOpenChange={setMenuOpen}
+                    placement="bottomLeft"
+                >
+                    <button
+                        type="button"
+                        className="grid size-12 shrink-0 place-items-center rounded-xl border bg-transparent transition hover:opacity-70"
+                        style={{
+                            borderColor: isDragOver ? theme.node.activeStroke : theme.toolbar.border,
+                            color: isDragOver ? theme.node.activeStroke : theme.node.muted,
+                            background: isDragOver ? theme.toolbar.activeBg : "transparent",
+                        }}
+                        title={t("canvas.references.upload")}
+                        onClick={() => {
+                            // If user clicks, open dropdown menu
+                        }}
+                    >
+                        <Plus className="size-4" />
+                    </button>
+                </Dropdown>
             </div>
         </div>
     );
