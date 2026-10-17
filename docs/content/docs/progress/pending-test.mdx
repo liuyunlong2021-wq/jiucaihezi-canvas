@@ -5,6 +5,10 @@ description: Implemented changes that still need manual verification
 
 # Pending Tests
 
+- FK video now uses local originals → existing OSS direct upload → JSON `duration/ratio/resolution/imageUrls/videoUrls/audioUrls` for seven models and their public aliases. Upload/authorization failure or cancellation prevents generation; a rejected generation POST is never automatically retried or sent as multipart. Submission errors now expose the API response message. Requires a new canvas deployment with FK 0.3.4; paid output/download/billing and browser OSS CORS remain pending. This supersedes the local-file transport items below; they record earlier iterations.
+
+- FK multipart blocker: plugin 0.3.4 reads the host's `file.field`; 0.3.3 incorrectly read `name/fieldName`. Video fixtures now use the real host shape. Upload and activate 0.3.4 before testing v0.20.3; no new canvas runtime build is needed for this fix.
+
 - FK H3: `fk-MiniMaxh3` and its full upstream ID now share the local-file video contract (768p, 1–15 seconds, 9 images / 0 videos / 3 audio files). Requires activating FK plugin 0.3.3 in NewAPI and a new canvas release. Existing saved classifications and scripts are not overwritten; verify the seven public mappings are categorized as Video and remove obsolete scripts manually. Paid generation, download and billing remain unverified.
 
 - Approved video-model defaults and stage feedback: explicit new selections use the verified per-model duration (Xiaoyi 6 seconds; FK/Yihong from their catalogs). Existing nodes, selecting the same model, history restoration and custom scripts must retain their values. Config/result nodes show reference preparation, upload, submission, generation, download and local-save stages. The 26 main tests pass; real model-list UI, edge-case failures and paid production flows remain pending.

@@ -129,7 +129,9 @@ async function createPlatformVideoTask(config: AiConfig, model: string, spec: Vi
         const videoUrls = await upload(videoFiles);
         const audioUrls = await upload(audioFiles);
         body = { model: config.model, prompt, seconds, ratio, resolution };
-        if (spec.plugin === "xiaoyi") {
+        if (spec.plugin === "fk") {
+            body = { model: config.model, prompt, duration: seconds, ratio, resolution, imageUrls: images, videoUrls, audioUrls };
+        } else if (spec.plugin === "xiaoyi") {
             body = { model: config.model, prompt, seconds, aspect_ratio: ratio, resolution, ...(images[0] ? { image: images[0] } : {}) };
         } else if (spec.layout === "super" || spec.layout === "prime") {
             body.media = [
@@ -155,9 +157,13 @@ async function createPlatformVideoTask(config: AiConfig, model: string, spec: Vi
     }
     options?.signal?.throwIfAborted();
     options?.onStage?.("submit");
-    const created = unwrapVideoResponse((await axios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config, body instanceof FormData ? undefined : "application/json"), signal: options?.signal })).data);
-    if (!created.id) throw new Error(apiText("noVideoTaskId"));
-    return { id: created.id, provider: "openai", model };
+    try {
+        const created = unwrapVideoResponse((await axios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config, body instanceof FormData ? undefined : "application/json"), signal: options?.signal })).data);
+        if (!created.id) throw new Error(apiText("noVideoTaskId"));
+        return { id: created.id, provider: "openai", model };
+    } catch (error) {
+        throw new Error(readAxiosError(error, apiText("videoTaskCreateFailed")));
+    }
 }
 
 function mediaDuration(item: ReferenceVideo | ReferenceAudio, min?: number) {

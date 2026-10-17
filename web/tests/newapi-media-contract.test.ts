@@ -5,10 +5,10 @@ test("platform matching is an exact origin, not a hostname substring", () => {
     expect(videoContract("https://api.jiucaihezi.studio.evil.invalid", "grok-imagine-video-1.5")).toBeUndefined();
     expect(videoContract("https://api.jiucaihezi.studio", "constructor")).toBeUndefined();
 });
-test("FK H3 public mapping uses the same file contract as its upstream ID", () => {
+test("FK H3 public mapping uses the same OSS URL contract as its upstream ID", () => {
     const spec = videoContract("https://api.jiucaihezi.studio", "fk-MiniMaxh3")!;
     expect(spec).toBe(videoContracts["ft-video-v1-77e8ee7a636f15dac27b2ce6d6fcd746"]);
-    expect(spec).toMatchObject({ plugin: "fk", transport: "files", defaultSeconds: 1, min: 1, max: 15, refs: [9, 0, 3], resolutions: ["768p"] });
+    expect(spec).toMatchObject({ plugin: "fk", transport: "urls", defaultSeconds: 1, min: 1, max: 15, refs: [9, 0, 3], resolutions: ["768p"] });
     expect(() => validateVideoContract(spec, { seconds: 1, resolution: "768p", ratio: "4:3", mode: "reference", counts: [9, 0, 3] })).not.toThrow();
     expect(() => validateVideoContract(spec, { seconds: 1, resolution: "768p", ratio: "16:9", mode: "reference", counts: [1, 1, 0] })).toThrow();
 });

@@ -1,5 +1,9 @@
 # 线上画布部署与文武双修排障
 
+## 当前发布交接
+
+v0.20.4 发布包含 FK 视频 OSS＋JSON 切换，配合 FK 插件 0.3.4；生产服务器由用户拉取镜像并切换容器。沿用 `/root/canvas-v0.20.2.ZfFFpW/container.env`、bridge、无挂载、`127.0.0.1:3010:3000` 和 unless-stopped；Nginx 不改，旧容器保留供回滚。用户确认 v0.20.3 已上线，但 FK multipart 仍空 500；图生图及清除过期脚本后的文武双修成功，不扩大为 FK 视频已通过。以下旧版本细节作为历史记录。
+
 ## 已验证的成功链路
 
 线上地址：`https://huabu.jiucaihezi.studio`。实际部署仓库是 `/Users/by3/Documents/jiucaihezi-canvas`，远端为 `liuyunlong2021-wq/jiucaihezi-canvas`；不是 `/Users/by3/Documents/infinite-canvas` 的上游仓库。

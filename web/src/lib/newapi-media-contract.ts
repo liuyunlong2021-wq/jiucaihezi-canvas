@@ -1,6 +1,6 @@
 import { imageSizePresets, inferMediaRatio, inferMediaScale } from "./media-size";
 
-// NewAPI task-plugin contracts: FK 0.3.3, Xiaoyi 0.2.0, Yihong 0.1.7.
+// NewAPI task-plugin contracts: FK 0.3.4, Xiaoyi 0.2.0, Yihong 0.1.7.
 export function isMediaPlatform(baseUrl: string) {
     try {
         return new URL(baseUrl).origin === "https://api.jiucaihezi.studio";
@@ -99,12 +99,12 @@ const fkAliases = ["特价渠道 Seedance 2.5 满血 720p", "特价渠道 Seedan
 export const videoContracts: Record<string, VideoContract> = Object.create(null);
 fkSpecs.forEach(([id, min, max, refs, seconds, wide, resolutions, promptMax], i) => {
     // Defaults come from the existing App mediaModelCapabilities, not from range inference.
-    const spec: VideoContract = { plugin: "fk", transport: "files", min, max, refs, seconds, ratios: wide ? [...ratios, "21:9"] : ratios, resolutions, promptMax, defaultSeconds: [30, 15, 30, 4, 15, 4][i] };
+    const spec: VideoContract = { plugin: "fk", transport: "urls", min, max, refs, seconds, ratios: wide ? [...ratios, "21:9"] : ratios, resolutions, promptMax, defaultSeconds: [30, 15, 30, 4, 15, 4][i] };
     videoContracts[`ft-video-v1-${id}`] = spec;
     videoContracts[fkAliases[i]] = spec;
 });
 videoContracts["fk-MiniMaxh3"] = videoContracts["ft-video-v1-77e8ee7a636f15dac27b2ce6d6fcd746"] = {
-    plugin: "fk", transport: "files", min: 1, max: 15, defaultSeconds: 1, refs: [9, 0, 3], ratios, resolutions: ["768p"],
+    plugin: "fk", transport: "urls", min: 1, max: 15, defaultSeconds: 1, refs: [9, 0, 3], ratios, resolutions: ["768p"],
 };
 videoContracts["grok-imagine-video-1.5"] = { plugin: "xiaoyi", transport: "urls", min: 6, max: 10, seconds: [6, 10], refs: [1, 0, 0], ratios: ["16:9", "9:16"], resolutions: ["480p", "720p", "1080p"], frames: true, defaultSeconds: 6 };
 const yihongSpecs: Array<[string, number, number, number[], string[], string[], VideoContract["layout"]?, boolean?]> = [

@@ -1,9 +1,19 @@
 # FK / 小易 / 易红媒体修复：实施与验收记录
 
-状态：v0.20.2 已发布，用户确认图生图和移除执行脚本后的文武双修成功；不扩写为所有模型通过。用户已上传 FK 插件；下述 H3 画布修复纳入 v0.20.3，生产部署与逐模型验收仍待确认。上传不等于已核实激活版本。
+状态：用户已部署 v0.20.3，图生图和移除执行脚本后的文武双修成功；FK 本地文件提交仍返回空正文 500，无任务。以下 OSS＋JSON 切换纳入 v0.20.4 发布，服务器由用户切换；插件激活版本与生产出片仍待核实。
+
+## 当前 FK 视频路径：OSS＋JSON
+
+- 用户授权切换，复用现有 `uploadReferenceMedia`；七个型号及七个公开映射由文件传输改成 URL 传输。先从本地原图/媒体读取，再按顺序 OSS 直传，JSON 发送 model/prompt/duration/ratio/resolution/imageUrls/videoUrls/audioUrls。完整签名与顺序保留；只向平台发送 Token，OSS 不带平台鉴权。
+- 规格验证在读取/上传/生成前；授权失败、上传失败、上传后取消均不创建生成任务。失败不自动重发 POST 或换传输路径。默认时长、参数范围、超时、轮询策略、下载保存逻辑和其它插件合同不变。
+- 已知平台任务提交新增错误正文提取，复用现有错误读取函数，不再仅展示 Axios 的通用状态码。
+- TDD：原实现复现缺失 upload 阶段、仍发 FormData、授权失败仍创建任务；修改后定向验证通过。真实插件 decode/build 同时检查标准 generate URL、公共 ID 头、JSON 请求头、duration 与完整 imageUrls。此验证不包含真实宿主网络转发或 FK 出片。
+- 开发验证：视频服务定向 14/14；完整 Web 测试 27/27，含隔离服务组。发布构建独立执行；没有生产上传或收费生成验收。
+- 依据：用户提供的 FK 官方文档同时允许 multipart 和 JSON；兄弟 App 的 `docs/wiki/运维/App参考素材直传阿里云OSS验收-2026-10-09.md` 记录 H3、9:16、3 秒 OSS 路径成功。当前 multipart 空 500 的具体原因尚未证实，不据此声称 FK 不支持文件。以下保留此前实现与测试记录；当前传输以本节为准。
 
 ## FK H3 追加核对
 
+- v0.20.3 生产截图定位 `Unsupported video file field: undefined`：FK 0.3.3 错读 `file.name/fieldName`，宿主 rc.40 的 `middleware/task_plugin.go` 实际提供 `file.field`。原测试夹具复制了错误字段，不能证明宿主对接通过。现插件 0.3.4 改为 `file.field`，两仓视频夹具按真实结构修正；先复现相同错误再修复。此问题在插件解码阶段拒绝，不需为它重新部署画布。生产上传激活、上游转发和真实出片仍待验收。
 - 用户最新文档明确 H3 也使用 `/api/open/v1/video/generate`，支持重复 images/audios 文件字段。此前「必须 HTTPS URL」来自旧插件，不再作为当前结论。
 - App 仓库 `newapi-plugins/fk.plugin.js` 升至 0.3.3，注册 `fk-MiniMaxh3` 映射、补齐 H3 规格并移除固定兼容分流；已有任务根据提交快照继续兼容查询。字符串 error 保留为明确失败原因。图片与计费表达式不改。
 - 画布追加 H3 ID/映射的本地文件合同和新模型能力识别；新选模型默认时长沿用 App 登记的 1 秒。已有手工分类、脚本和节点值保持不动；列表缺项需在渠道编辑器中确认分类为视频。
@@ -15,7 +25,7 @@
 - 参考图读取优先使用已有 IndexedDB 原图；读取失败显示明确错误。画布普通生成、内置面板和重试的准备阶段均进入 try/finally，并传递取消信号。
 - 已确认的平台公开模型采用独立合同：26 个图片名称、24 个视频名称/别名。拉取模型后的能力猜测补齐 Gemini Banana、MiniMax H3、带连字符的 Seedance 与 FK 别名；不覆盖用户已有分类或显式脚本。
 - FK 图片传 imageSize/ratio，易红 GPT 使用精确尺寸、Gemini 使用 imageSize/ratio。参数面板跟随合同；自定义非法尺寸、时长、参考上限在提交前拒绝，不默默裁剪。直连 OpenAI gpt-image 仍省略 response_format。
-- FK 当前视频型号传原图文件，字段为 images/videos/audios；小易与易红 URL 型视频使用现有 upload-url 授权合同直传 OSS，再发 JSON。平台 Token 只发给自己的 NewAPI，OSS 请求不带该 Token/Cookie；上传失败不提交生成。
+- FK、小易与易红当前视频型号均使用现有 upload-url 授权合同直传 OSS，再按各自合同发 JSON；FK 的旧版本文件路径已被上述 OSS＋JSON 替代。平台 Token 只发给自己的 NewAPI，OSS 请求不带该 Token/Cookie；上传失败不提交生成。
 - 小易单图、易红普通参考、Super/Prime media、H3 attachments 与 Grok 字段分别组装。必要的参考媒体时长在上传前检查；不支持的首尾帧组合拒绝，不改成其它语义。
 - 已知平台视频绕开不匹配的旧内置脚本，创建后保存真实任务 ID、原模型与渠道地址；刷新续查原任务，原渠道缺失/地址变化会报错，不自动换渠道。原 Super/Cheap 内置脚本的 40 分钟、5 秒间隔轮询预算保留，其余路径沿原策略；未新增重生成重试。
 - 平台完成的视频取鉴权 content 字节；失败状态不会因残留 URL 被标成功。视频必须能解码并写入本地，拒绝 HTML/JSON/空内容假成功，取消贯穿下载与保存。

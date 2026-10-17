@@ -5,6 +5,10 @@ description: Planned follow-up work
 
 # TODO
 
+- Current FK gate: deploy the new OSS+JSON canvas path with FK 0.3.4, then validate grants, OSS browser CORS, a single generation, task restoration, playback/download and billing. The transport switch below is implemented locally and tracked in Pending Tests; do not repeatedly create paid tasks.
+
+- Supersedes the 0.3.3 gate below: FK must activate 0.3.4 to fix file decoding; verify actual upstream forwarding and generation, not only decode/build fixtures. Canvas v0.20.3 already has the runtime contract.
+
 - FK release gate: activate plugin 0.3.3 and publish the H3 canvas contract together; check saved model categories/scripts. Confirm the `b8a797…` model still belongs to the FK account (absent from the latest supplied catalog); `89e872…` is documented as available only 01:00–11:00. Do not silently remap models or retry paid submissions.
 
 - Remaining media gates: verify production plugin versions/public model routing, image Base64 presenter and large-image host patch, OSS/content browser CORS, then separately accept paid image-editing and image-to-video flows and billing for FK, Xiaoyi and Yihong. Add browser fault injection for mid-flight cancellation/late replies, partial multi-results, changed channels and per-page save retries. Shared-storage quota failure, real-canvas refresh recovery and byte-exact video download passed local fixture checks; approved duration defaults and stage feedback moved to Pending Tests. Actual scope is in repository `docs/media-reference-fix-verification.md`. Do not repeatedly create paid tasks for diagnosis.
