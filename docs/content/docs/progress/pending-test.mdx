@@ -5,6 +5,8 @@ description: Implemented changes that still need manual verification
 
 # Pending Tests
 
+- FK H3: `fk-MiniMaxh3` and its full upstream ID now share the local-file video contract (768p, 1–15 seconds, 9 images / 0 videos / 3 audio files). Requires activating FK plugin 0.3.3 in NewAPI and a new canvas release. Existing saved classifications and scripts are not overwritten; verify the seven public mappings are categorized as Video and remove obsolete scripts manually. Paid generation, download and billing remain unverified.
+
 - Approved video-model defaults and stage feedback: explicit new selections use the verified per-model duration (Xiaoyi 6 seconds; FK/Yihong from their catalogs). Existing nodes, selecting the same model, history restoration and custom scripts must retain their values. Config/result nodes show reference preparation, upload, submission, generation, download and local-save stages. The 26 main tests pass; real model-list UI, edge-case failures and paid production flows remain pending.
 
 - FK / Xiaoyi / Yihong media compatibility: implemented local-original reference reads and cleanup, per-model image/video contracts, file or signed OSS upload, persisted real canvas video task IDs and authenticated content download, strict local result storage and save-only image retry. Service tests and synthetic browser CORS/IndexedDB/video-decoding checks passed; production model routing, plugin versions, presenter Base64 output, OSS/content CORS, paid end-to-end generation, billing and remaining fault injection are unverified. See repository `docs/media-reference-fix-verification.md`; do not treat HTTP 200 or a visible external URL as acceptance.
