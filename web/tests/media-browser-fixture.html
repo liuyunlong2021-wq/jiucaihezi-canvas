@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+    <meta charset="utf-8" />
+    <title>媒体原图浏览器验收（无费用）</title>
+    <body>
+        <h1>媒体原图浏览器验收（无费用）</h1>
+        <p>仅使用合成 PNG 与本地夹具，不请求收费模型，不清理用户数据。</p>
+        <button id="run">运行跨域与本地保存测试</button>
+        <button id="restore">刷新后验证原图</button>
+        <button id="canvas">创建隔离画布验证异常收尾</button>
+        <button id="video">验证视频保存与错误内容拒绝</button>
+        <button id="quota">验证存储失败仅重试保存</button>
+        <button id="resume">创建隔离视频续查测试</button>
+        <ul id="output"></ul>
+        <img id="remote" alt="允许展示但不允许读取的测试图片" width="32" height="32" />
+        <script type="module">
+            import { uploadGeneratedImage, imageToDataUrl, getImageBlob, resolveImageUrl, deleteStoredImages } from "/src/services/image-storage.ts";
+            import { uploadMediaFile, getMediaBlob, resolveMediaUrl, deleteStoredMedia } from "/src/services/file-storage.ts";
+            const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
+            const log = (text) => {
+                const item = document.createElement("li");
+                item.textContent = text;
+                document.querySelector("#output").append(item);
+            };
+            const assert = (value, message) => {
+                if (!value) throw new Error(message);
+                log("通过：" + message);
+            };
+            document.querySelector("#quota").onclick = async () => {
+                try {
+                    const { requestGeneration } = await import("/src/services/api/image.ts");
+                    const { defaultConfig } = await import("/src/stores/use-config-store.ts");
+                    const config = {
+                        ...defaultConfig,
+                        model: "quota-fixture::fixture-image",
+                        count: "1",
+                        channels: [{ id: "quota-fixture", name: "quota-fixture", baseUrl: "http://127.0.0.1:3002", apiKey: "fixture-not-a-real-key", apiFormat: "openai", models: [{ name: "fixture-image", capability: "image" }] }],
+                    };
+                    const before = (await (await fetch("http://127.0.0.1:3002/stats")).json()).counts["POST /v1/images/generations"] || 0;
+                    const generated = (await requestGeneration(config, "synthetic fixture"))[0];
+                    const put = IDBObjectStore.prototype.put;
+                    let pending;
+                    try {
+                        IDBObjectStore.prototype.put = function (...args) {
+                            if (this.name === "image_files") throw new DOMException("fixture quota", "QuotaExceededError");
+                            return put.apply(this, args);
+                        };
+                        await uploadGeneratedImage(generated.dataUrl);
+                    } catch (error) {
+                        pending = error.source;
+                    } finally {
+                        IDBObjectStore.prototype.put = put;
+                    }
+                    assert(pending === generated.dataUrl, "配额失败保留同一结果，不伪装保存成功");
+                    const stored = await uploadGeneratedImage(pending);
+                    const after = (await (await fetch("http://127.0.0.1:3002/stats")).json()).counts["POST /v1/images/generations"] || 0;
+                    assert(after === before + 1 && stored.storageKey, "恢复存储后只保存结果，生成接口始终调用一次");
+                    const originalKey = sessionStorage.getItem("canvas:media-fixture-key");
+                    if (originalKey) assert(Boolean(await getImageBlob(originalKey)), "失败清理没有删除先前原图");
+                    await deleteStoredImages([stored.storageKey]);
+                } catch (error) {
+                    log("失败：" + error.message);
+                }
+            };
+            document.querySelector("#video").onclick = async () => {
+                try {
+                    const old = sessionStorage.getItem("canvas:video-fixture-key");
+                    if (old) await deleteStoredMedia([old]);
+                    const blob = await (await fetch("/tests/fixtures/tiny.mp4")).blob();
+                    const stored = await uploadMediaFile(blob, "video");
+                    sessionStorage.setItem("canvas:video-fixture-key", stored.storageKey);
+                    assert(stored.width === 32 && stored.height === 32 && stored.durationMs === 1000, "真实视频解码后写入本地，尺寸与时长正确");
+                    assert((await getMediaBlob(stored.storageKey)).size === blob.size, "视频原始字节没有变成错误页");
+                    let rejected = false;
+                    try {
+                        await uploadMediaFile(new Blob(["<html>error</html>"], { type: "text/html" }), "video");
+                    } catch {
+                        rejected = true;
+                    }
+                    assert(rejected, "HTML 不能当成视频保存成功");
+                    log("请刷新后点击「刷新后验证原图」，同时检查视频恢复、播放和下载。");
+                } catch (error) {
+                    log("失败：" + error.message);
+                }
+            };
+            document.querySelector("#canvas").onclick = async () => {
+                const { useCanvasStore } = await import("/src/stores/canvas/use-canvas-store.ts");
+                const { useConfigStore } = await import("/src/stores/use-config-store.ts");
+                await useCanvasStore.persist.rehydrate();
+                const config = useConfigStore.getState().config;
+                const channel = {
+                    id: "media-cors-fixture",
+                    name: "仅本地回归夹具",
+                    baseUrl: "http://127.0.0.1:3002",
+                    apiKey: "fixture-not-a-real-key",
+                    apiFormat: "openai",
+                    models: [
+                        { name: "fixture-image", capability: "image" },
+                        { name: "fixture-video", capability: "video" },
+                    ],
+                };
+                const existing = config.channels.find((item) => item.id === channel.id);
+                if (existing && (existing.baseUrl !== channel.baseUrl || existing.apiKey !== channel.apiKey || existing.name !== channel.name)) throw new Error("测试渠道 ID 已被其它配置使用，拒绝覆盖");
+                useConfigStore.setState({
+                    config: { ...config, channels: [...config.channels.filter((item) => item.id !== channel.id), channel], models: [...new Set([...config.models, "media-cors-fixture::fixture-image", "media-cors-fixture::fixture-video"])] },
+                });
+                const id = useCanvasStore.getState().createProject("媒体 CORS 回归（合成测试）");
+                useCanvasStore.getState().updateProject(id, {
+                    nodes: [
+                        {
+                            id: "fixture-source",
+                            type: "image",
+                            title: "仅可展示的跨域参考图",
+                            position: { x: 100, y: 160 },
+                            width: 200,
+                            height: 200,
+                            metadata: { content: "http://127.0.0.1:3002/no-cors.png", status: "success", naturalWidth: 1, naturalHeight: 1 },
+                        },
+                        {
+                            id: "fixture-config",
+                            type: "config",
+                            title: "异常收尾回归",
+                            position: { x: 400, y: 160 },
+                            width: 380,
+                            height: 240,
+                            metadata: { generationMode: "image", model: "media-cors-fixture::fixture-image", prompt: "仅本地夹具，无收费 API", count: 1, status: "idle" },
+                        },
+                    ],
+                    connections: [{ id: "fixture-edge", fromNodeId: "fixture-source", toNodeId: "fixture-config" }],
+                });
+                const link = document.createElement("a");
+                link.href = `/canvas/${id}`;
+                link.textContent = "打开隔离测试画布";
+                document.body.append(link);
+                log("已新增测试项目和独立本地渠道，未修改现有项目或默认渠道。点击画布生成后，应读取失败并恢复按钮，不出现永久转圈。");
+            };
+            document.querySelector("#resume").onclick = async () => {
+                try {
+                    const { useCanvasStore } = await import("/src/stores/canvas/use-canvas-store.ts");
+                    const { useConfigStore } = await import("/src/stores/use-config-store.ts");
+                    await useCanvasStore.persist.rehydrate();
+                    const config = useConfigStore.getState().config;
+                    const channel = { id: "media-video-fixture", name: "仅本地视频回归夹具", baseUrl: "http://127.0.0.1:3002", apiKey: "fixture-not-a-real-key", apiFormat: "openai", models: [{ name: "fixture-video", capability: "video" }] };
+                    const existing = config.channels.find((item) => item.id === channel.id);
+                    if (existing && (existing.baseUrl !== channel.baseUrl || existing.apiKey !== channel.apiKey)) throw new Error("测试渠道冲突，拒绝覆盖");
+                    if (!existing) useConfigStore.setState({ config: { ...config, channels: [...config.channels, channel], models: [...config.models, "media-video-fixture::fixture-video"] } });
+                    const stored = await uploadGeneratedImage(png);
+                    const id = useCanvasStore.getState().createProject("视频续查回归（合成测试）");
+                    useCanvasStore.getState().updateProject(id, {
+                        nodes: [
+                            {
+                                id: "fixture-video-source",
+                                type: "image",
+                                title: "本地参考原图",
+                                position: { x: 100, y: 160 },
+                                width: 180,
+                                height: 180,
+                                metadata: { content: stored.url, storageKey: stored.storageKey, naturalWidth: 1, naturalHeight: 1, status: "success" },
+                            },
+                            {
+                                id: "fixture-video-config",
+                                type: "config",
+                                title: "视频续查测试",
+                                position: { x: 400, y: 160 },
+                                width: 380,
+                                height: 240,
+                                metadata: { generationMode: "video", model: "media-video-fixture::fixture-video", prompt: "仅本地视频夹具", seconds: "6", vquality: "720", size: "9:16", videoMode: "reference", status: "idle" },
+                            },
+                        ],
+                        connections: [{ id: "fixture-video-edge", fromNodeId: "fixture-video-source", toNodeId: "fixture-video-config" }],
+                    });
+                    const link = document.createElement("a");
+                    link.href = `/canvas/${id}`;
+                    link.textContent = "打开视频续查测试画布";
+                    document.body.append(link);
+                } catch (error) {
+                    log("失败：" + error.message);
+                }
+            };
+            document.querySelector("#run").onclick = async () => {
+                try {
+                    const old = sessionStorage.getItem("canvas:media-fixture-key");
+                    if (old) await deleteStoredImages([old]);
+                    const image = document.querySelector("#remote");
+                    const shown = new Promise((resolve, reject) => {
+                        image.onload = resolve;
+                        image.onerror = reject;
+                    });
+                    image.src = "http://127.0.0.1:3002/no-cors.png";
+                    await shown;
+                    assert(image.naturalWidth === 1, "跨域图片可以展示");
+                    let rejected = false;
+                    try {
+                        await imageToDataUrl({ dataUrl: image.src });
+                    } catch {
+                        rejected = true;
+                    }
+                    assert(rejected, "浏览器确实阻止跨域读取");
+                    const stored = await uploadGeneratedImage(png);
+                    sessionStorage.setItem("canvas:media-fixture-key", stored.storageKey);
+                    const restored = await imageToDataUrl({ storageKey: stored.storageKey, dataUrl: image.src });
+                    assert(restored === png, "本地原始字节优先于跨域展示地址");
+                    const blob = await getImageBlob(stored.storageKey);
+                    assert(blob && blob.size > 0 && stored.width === 1 && stored.height === 1, "真实 IndexedDB 保存原图与正确尺寸");
+                    const controller = new AbortController();
+                    controller.abort();
+                    rejected = false;
+                    try {
+                        await imageToDataUrl({ storageKey: stored.storageKey }, { signal: controller.signal });
+                    } catch {
+                        rejected = true;
+                    }
+                    assert(rejected, "取消后不继续读取本地图");
+                    rejected = false;
+                    try {
+                        await uploadGeneratedImage(image.src);
+                    } catch {
+                        rejected = true;
+                    }
+                    assert(rejected, "不能读取的生成结果不会退回外链假成功");
+                    log("请刷新本页，再点「刷新后验证原图」。");
+                } catch (error) {
+                    log("失败：" + error.message);
+                }
+            };
+            document.querySelector("#restore").onclick = async () => {
+                try {
+                    const key = sessionStorage.getItem("canvas:media-fixture-key");
+                    assert(key && (await imageToDataUrl({ storageKey: key, dataUrl: "http://127.0.0.1:3002/expired.png" })) === png, "刷新后无需旧地址即可恢复同一原图");
+                    const link = document.createElement("a");
+                    link.href = await resolveImageUrl(key);
+                    link.download = "fixture.png";
+                    link.textContent = "下载 IndexedDB 原图";
+                    document.body.append(link);
+                    const videoKey = sessionStorage.getItem("canvas:video-fixture-key");
+                    if (videoKey) {
+                        const video = document.createElement("video");
+                        video.controls = true;
+                        video.width = 160;
+                        video.src = await resolveMediaUrl(videoKey);
+                        document.body.append(video);
+                        await new Promise((resolve, reject) => {
+                            video.onloadedmetadata = resolve;
+                            video.onerror = reject;
+                        });
+                        assert(video.videoWidth === 32 && video.videoHeight === 32, "刷新后视频从真实 IndexedDB 恢复并可解码播放");
+                        const download = document.createElement("a");
+                        download.href = video.src;
+                        download.download = "fixture.mp4";
+                        download.textContent = "下载 IndexedDB 视频";
+                        document.body.append(download);
+                    }
+                } catch (error) {
+                    log("失败：" + error.message);
+                }
+            };
+        </script>
+    </body>
+</html>

@@ -7,5 +7,6 @@ description: 当前项目后续值得处理的事项
 
 本文档用来记录当前项目后续比较值得处理的事项。
 
+- 媒体适配剩余门槛：核对生产插件版本/公开模型路由、图片 Base64 presenter 与大图宿主补丁、OSS/content 浏览器 CORS，并按三插件分别验收真实图生图/图生视频闭环与计费；补齐中途取消/迟到、多结果部分失败、渠道变更后的浏览器故障注入及逐页面配额失败重试验收。共享存储配额故障、真实画布刷新续查及原始视频下载已通过本地夹具验证，默认时长与阶段提示已实施并移入待测试。实际范围见仓库 `docs/media-reference-fix-verification.md`；不反复创建收费任务。
 - 本地 Agent 接入后续：按[本地 Agent 接入规划](/zh-CN/docs/progress/local-agent-integration-plan)把 Claude Code CLI Adapter 升级为 Claude Agent SDK Adapter，并完善工具队列体验。
 - Agent Skill 后续：补充网络检索安装、Skill 资源文件管理和可控的本地记忆沉淀。

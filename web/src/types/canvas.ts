@@ -1,3 +1,5 @@
+import type { MediaGenerationStage } from "./media";
+
 export type Position = {
     x: number;
     y: number;
@@ -29,6 +31,7 @@ export type CanvasNodeImage = {
     id: string;
     status: CanvasNodeStatus;
     errorDetails?: string;
+    pendingImageSource?: string;
     content: string;
     storageKey?: string;
     naturalWidth: number;
@@ -45,6 +48,7 @@ export type CanvasNodeText = {
 };
 
 export type CanvasNodeMetadata = {
+    generationStage?: MediaGenerationStage;
     content?: string;
     composerContent?: string;
     prompt?: string;
@@ -83,6 +87,9 @@ export type CanvasNodeMetadata = {
     durationMs?: number;
     videoTaskId?: string;
     videoTaskProvider?: "openai" | "gemini";
+    videoTaskBaseUrl?: string;
+    videoTaskModel?: string;
+    pendingImageSource?: string;
     groupId?: string;
     interactive?: boolean; // Plugin node interaction/move state; see CanvasNodeDefinition.interactionToggle.
 };

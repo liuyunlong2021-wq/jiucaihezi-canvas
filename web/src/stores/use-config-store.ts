@@ -6,6 +6,7 @@ import { nanoid } from "nanoid";
 import i18n from "@/i18n";
 import { VIDEO_SECONDS_DEFAULT } from "@/lib/media-size";
 import { resolveBuiltinModelScript, RH_CHANNEL_MODELS, syncRhChannelModels } from "@/lib/model-scripts";
+import { imageContract, isMediaPlatform, videoContract, videoContracts } from "@/lib/newapi-media-contract";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -83,11 +84,10 @@ export const DEFAULT_LOCAL_PROXY_URL = "http://127.0.0.1:23210";
 export const JIUCAIHEZI_BASE_URL = "https://api.jiucaihezi.studio";
 /** 用户在该渠道获取 API Key 的地址。 */
 export const JIUCAIHEZI_KEY_URL = "https://api.jiucaihezi.studio/keys";
-const JIUCAIHEZI_HOST = new URL(JIUCAIHEZI_BASE_URL).host;
 
 /** 是否为预置的韭菜盒子渠道；按接口地址判断，用户自建的同一地址渠道也适用。 */
 export function isJiucaiheziChannel(baseUrl: string) {
-    return baseUrl.toLowerCase().includes(JIUCAIHEZI_HOST);
+    return isMediaPlatform(baseUrl);
 }
 const JIUCAIHEZI_MODELS: ChannelModel[] = [
     { name: "gpt-image-2.5-1k", capability: "image" },
@@ -130,10 +130,7 @@ export const defaultConfig: AiConfig = {
     videoMode: "reference",
     systemPrompt: "",
     reasoningEffort: "auto",
-    models: [
-        ...JIUCAIHEZI_MODELS.map((model) => `default::${model.name}`),
-        ...RH_CHANNEL_MODELS.map((model) => `default::${model.name}`),
-    ],
+    models: [...JIUCAIHEZI_MODELS.map((model) => `default::${model.name}`), ...RH_CHANNEL_MODELS.map((model) => `default::${model.name}`)],
     quality: "auto",
     size: "9:16",
     background: "",
@@ -176,6 +173,8 @@ const IMAGE_KEYWORDS = ["seedream", "gpt-image", "image", "dall-e", "dalle", "im
 
 /** Best-effort default capability for a freshly fetched model name; user can override in the channel editor. */
 export function guessCapability(name: string): ModelCapability {
+    if (videoContracts[name]) return "video";
+    if (imageContract(JIUCAIHEZI_BASE_URL, name)) return "image";
     const value = name.toLowerCase();
     if (VIDEO_KEYWORDS.some((keyword) => value.includes(keyword))) return "video";
     // 有内置调用脚本的接口都是视频接口，即使模型名不含 video 关键词也按视频处理。
@@ -219,7 +218,15 @@ export function selectableModelsByCapability(config: AiConfig, capability?: Mode
 export function resolveModelScript(config: AiConfig, value: string) {
     const entry = findChannelModel(config, value);
     if (!entry) return "";
-    return entry.model.script?.trim() || resolveBuiltinModelScript(entry.model.name, entry.model.capability);
+    return entry.model.script?.trim() || (videoContract(entry.channel.baseUrl, entry.model.name) ? "" : resolveBuiltinModelScript(entry.model.name, entry.model.capability));
+}
+
+/** Only explicit new model selections apply defaults; never run during hydration or history restoration. */
+export function videoModelSelectionSeconds(config: AiConfig, value: string, currentValue: string) {
+    if (value === currentValue) return;
+    const entry = findChannelModel(config, value);
+    if (!entry || entry.model.script?.trim()) return;
+    return videoContract(entry.channel.baseUrl, entry.model.name)?.defaultSeconds?.toString();
 }
 
 function isAiConfigReady(config: AiConfig, model: string) {
@@ -360,10 +367,7 @@ export function createModelChannel(channel?: Partial<ModelChannel>): ModelChanne
     };
 }
 
-export function upsertChannelCredentials(
-    config: AiConfig,
-    input: { baseUrl?: string | null; apiKey?: string | null },
-): ChannelCredentialsImportResult & { config: AiConfig } {
+export function upsertChannelCredentials(config: AiConfig, input: { baseUrl?: string | null; apiKey?: string | null }): ChannelCredentialsImportResult & { config: AiConfig } {
     const rawBaseUrl = input.baseUrl?.trim() || "";
     if (!rawBaseUrl) return { status: "missing-base-url", config };
     if (!isHttpBaseUrl(rawBaseUrl)) return { status: "invalid-base-url", config };
@@ -469,7 +473,18 @@ export function resolveModelChannel(config: AiConfig, value: string) {
     const decoded = decodeChannelModel(value);
     const model = decoded?.model || value;
     const matched = decoded ? config.channels.find((channel) => channel.id === decoded.channelId) : config.channels.find((channel) => channel.models.some((item) => item.name === model));
-    return matched || config.channels[0] || createModelChannel({ id: "default", name: i18n.t("config.channels.defaultName"), baseUrl: config.baseUrl, apiKey: config.apiKey, apiFormat: config.apiFormat, models: config.models.map(modelOptionName).map((name) => ({ name, capability: guessCapability(name) })) });
+    return (
+        matched ||
+        config.channels[0] ||
+        createModelChannel({
+            id: "default",
+            name: i18n.t("config.channels.defaultName"),
+            baseUrl: config.baseUrl,
+            apiKey: config.apiKey,
+            apiFormat: config.apiFormat,
+            models: config.models.map(modelOptionName).map((name) => ({ name, capability: guessCapability(name) })),
+        })
+    );
 }
 
 export function resolveModelRequestConfig(config: AiConfig, value: string) {

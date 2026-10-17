@@ -17,6 +17,8 @@
 
 ## Development and Data
 
+- [FK / 小易 / 易红图生图与图生视频修复方案（TDD）](image-reference-fix-tdd.md)
+- [媒体修复实施与验收记录](media-reference-fix-verification.md)
 - [Local Development](/docs/development/local-development)
 - [Canvas Data Structure](/docs/development/canvas-data-structure)
 - [How the Local Codex Connection Works](/docs/development/local-codex-canvas)
@@ -39,6 +41,8 @@
 
 ## Production Operations
 
+- [服务器运维资料快照](../deploy/reference/README.md) — 原文备份、来源摘要及历史信息边界。
+- [画布与 NewAPI 媒体适配排查](../deploy/canvas-newapi-compatibility-audit.md) — 图生图结果回传、浏览器存储与 Task Plugin 协议缺口。
 - [线上画布部署与文武双修排障](../deploy/huabu-wenwu-runbook.md) — 实际 fork 仓库、源码部署、镜像更新、回滚、节点发现 CORS 与成功验收边界。
 
 ## Notes

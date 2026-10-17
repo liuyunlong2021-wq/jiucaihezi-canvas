@@ -32,7 +32,26 @@ const IMAGE_TIMEOUT_ERROR = "ImageTimeoutError";
 
 type StoredImagePreview = { version: number; blob?: Blob };
 
-type ImageReadOptions = { signal?: AbortSignal };
+type ImageReadOptions = { signal?: AbortSignal; requireLocal?: boolean };
+
+export class ImageResultSaveError extends Error {
+    constructor(
+        public readonly source: string,
+        options?: ErrorOptions,
+    ) {
+        super(i18n.t("common.imageResultSaveFailed"), options);
+        this.name = "ImageResultSaveError";
+    }
+}
+
+export async function uploadGeneratedImage(source: string, options?: ImageReadOptions) {
+    try {
+        return await uploadImage(source, { ...options, requireLocal: true });
+    } catch (error) {
+        if (options?.signal?.aborted) throw error;
+        throw new ImageResultSaveError(source, { cause: error });
+    }
+}
 
 export async function uploadImage(input: string | Blob, options?: ImageReadOptions): Promise<UploadedImage> {
     if (typeof input !== "string") return storeImage(input, options);
@@ -41,7 +60,7 @@ export async function uploadImage(input: string | Blob, options?: ImageReadOptio
     try {
         blob = await fetchImageBlob(input, options);
     } catch (error) {
-        if (options?.signal?.aborted || isNamedError(error, IMAGE_RESPONSE_ERROR) || isNamedError(error, IMAGE_TIMEOUT_ERROR) || !/^https?:\/\//i.test(input)) throw error;
+        if (options?.requireLocal || options?.signal?.aborted || isNamedError(error, IMAGE_RESPONSE_ERROR) || isNamedError(error, IMAGE_TIMEOUT_ERROR) || !/^https?:\/\//i.test(input)) throw error;
         const meta = await loadImageMeta(input, options, IMAGE_REMOTE_LOAD_TIMEOUT_MS);
         if (!meta) throw error;
         return { url: input, width: meta.width, height: meta.height, bytes: 0, mimeType: "" };
@@ -60,9 +79,12 @@ async function storeImage(blob: Blob, options?: ImageReadOptions): Promise<Uploa
         throwIfAborted(options?.signal);
         objectUrls.set(storageKey, url);
         await storeImagePreview(storageKey, blob);
+        throwIfAborted(options?.signal);
         return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type.startsWith("image/") ? blob.type : "" };
     } catch (error) {
         URL.revokeObjectURL(url);
+        objectUrls.delete(storageKey);
+        await deleteImagePreview(storageKey);
         await store.removeItem(storageKey).catch(() => undefined);
         throw error;
     }
@@ -223,9 +245,27 @@ export async function setImageBlob(storageKey: string, blob: Blob) {
 }
 
 export async function imageToDataUrl(image: { url?: string; dataUrl?: string; storageKey?: string }, options?: ImageReadOptions) {
-    const url = image.dataUrl || (await resolveImageUrl(image.storageKey, image.url || ""));
-    if (!url || url.startsWith("data:")) return url;
-    return blobToDataUrl(await fetchImageBlob(url, options));
+    throwIfAborted(options?.signal);
+    if (image.storageKey) {
+        const original = await getImageBlob(image.storageKey);
+        throwIfAborted(options?.signal);
+        if (original) {
+            const dataUrl = await blobToDataUrl(original);
+            throwIfAborted(options?.signal);
+            return dataUrl;
+        }
+    }
+    const url = image.dataUrl || image.url || "";
+    if (!url) throw new Error(i18n.t("common.referenceImageReadFailed"));
+    if (url.startsWith("data:")) return url;
+    try {
+        const dataUrl = await blobToDataUrl(await fetchImageBlob(url, options));
+        throwIfAborted(options?.signal);
+        return dataUrl;
+    } catch (error) {
+        if (options?.signal?.aborted) throw error;
+        throw new Error(i18n.t("common.referenceImageReadFailed"), { cause: error });
+    }
 }
 
 export async function deleteStoredImages(keys: Iterable<string>) {

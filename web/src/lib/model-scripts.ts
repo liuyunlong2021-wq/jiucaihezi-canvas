@@ -80,6 +80,8 @@ function stripVersionSuffix(value) {
 return await generateVideo({ prompt: prompt, images: images, audios: audios, params: params, model: model, baseUrl: baseUrl, apiKey: apiKey, request: request, http: http, poll: poll });
 `;
 
+export const SEEDANCE_POLL_INTERVAL_MS = 5000;
+export const SEEDANCE_POLL_TIMEOUT_MS = 2400000;
 const SEEDANCE_SCRIPT = `
 /**
  * 参考生视频：JSON 请求体 + 参考素材换公网 URL，画幅用 ratio 指定。
@@ -122,7 +124,7 @@ async function generateVideo({ prompt, images, params: { seconds, ratio }, model
       if (url) return { url: url };
       return task.status === "completed" ? { ready: true } : false;
     },
-    { intervalMs: 5000, timeoutMs: 2400000 },
+    { intervalMs: ${SEEDANCE_POLL_INTERVAL_MS}, timeoutMs: ${SEEDANCE_POLL_TIMEOUT_MS} },
   );
 
   if (done.url) return done;

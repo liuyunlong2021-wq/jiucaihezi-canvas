@@ -1,3 +1,5 @@
+export type MediaGenerationStage = "references" | "upload" | "submit" | "poll" | "download" | "save";
+
 export type ReferenceVideo = {
     id: string;
     name: string;

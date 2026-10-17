@@ -8,14 +8,26 @@ export type UploadedFile = { url: string; storageKey: string; bytes: number; mim
 const store = localforage.createInstance({ name: "infinite-canvas", storeName: "media_files" });
 const objectUrls = new Map<string, string>();
 
-export async function uploadMediaFile(input: string | Blob, prefix = "file"): Promise<UploadedFile> {
-    const blob = typeof input === "string" ? await (await fetch(withLocalProxy(input))).blob() : input;
+export async function uploadMediaFile(input: string | Blob, prefix = "file", options?: { signal?: AbortSignal }): Promise<UploadedFile> {
+    options?.signal?.throwIfAborted();
+    const response = typeof input === "string" ? await fetch(withLocalProxy(input), { signal: options?.signal }) : undefined;
+    if (response && !response.ok) throw new Error(`媒体下载失败（HTTP ${response.status}）`);
+    const blob = response ? await response.blob() : (input as Blob);
+    if (!blob.size) throw new Error("媒体内容为空");
     const storageKey = `${prefix}:${nanoid()}`;
-    await store.setItem(storageKey, blob);
     const url = URL.createObjectURL(blob);
-    objectUrls.set(storageKey, url);
-    const meta = blob.type.startsWith("video/") ? await readVideoMeta(url) : blob.type.startsWith("audio/") ? await readAudioMeta(url) : {};
-    return { url, storageKey, bytes: blob.size, mimeType: blob.type || "application/octet-stream", ...meta };
+    try {
+        const meta = prefix === "video" || blob.type.startsWith("video/") ? await readVideoMeta(url, options?.signal) : blob.type.startsWith("audio/") ? await readAudioMeta(url) : {};
+        options?.signal?.throwIfAborted();
+        await store.setItem(storageKey, blob);
+        options?.signal?.throwIfAborted();
+        objectUrls.set(storageKey, url);
+        return { url, storageKey, bytes: blob.size, mimeType: blob.type || "application/octet-stream", ...meta };
+    } catch (error) {
+        URL.revokeObjectURL(url);
+        await store.removeItem(storageKey).catch(() => undefined);
+        throw error;
+    }
 }
 
 export async function resolveMediaUrl(storageKey?: string, fallback = "") {
@@ -67,10 +79,25 @@ export function collectMediaStorageKeys(value: unknown, keys = new Set<string>()
     return keys;
 }
 
-function readVideoMeta(url: string) {
-    return new Promise<{ width: number; height: number; durationMs?: number }>((resolve) => {
+function readVideoMeta(url: string, signal?: AbortSignal) {
+    return new Promise<{ width: number; height: number; durationMs?: number }>((resolve, reject) => {
+        if (signal?.aborted) return reject(signal.reason);
         const video = document.createElement("video");
-        const done = () => resolve({ width: video.videoWidth || 1280, height: video.videoHeight || 720, durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : undefined });
+        const abort = () => {
+            video.onloadedmetadata = null;
+            video.onerror = null;
+            video.removeAttribute("src");
+            video.load();
+            reject(signal?.reason);
+        };
+        signal?.addEventListener("abort", abort, { once: true });
+        const done = () => {
+            signal?.removeEventListener("abort", abort);
+            video.onloadedmetadata = null;
+            video.onerror = null;
+            if (!video.videoWidth || !video.videoHeight) return reject(new Error("视频内容无法解码"));
+            resolve({ width: video.videoWidth, height: video.videoHeight, durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : undefined });
+        };
         video.onloadedmetadata = done;
         video.onerror = done;
         video.src = url;

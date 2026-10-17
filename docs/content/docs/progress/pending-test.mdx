@@ -5,6 +5,10 @@ description: Implemented changes that still need manual verification
 
 # Pending Tests
 
+- Approved video-model defaults and stage feedback: explicit new selections use the verified per-model duration (Xiaoyi 6 seconds; FK/Yihong from their catalogs). Existing nodes, selecting the same model, history restoration and custom scripts must retain their values. Config/result nodes show reference preparation, upload, submission, generation, download and local-save stages. The 26 main tests pass; real model-list UI, edge-case failures and paid production flows remain pending.
+
+- FK / Xiaoyi / Yihong media compatibility: implemented local-original reference reads and cleanup, per-model image/video contracts, file or signed OSS upload, persisted real canvas video task IDs and authenticated content download, strict local result storage and save-only image retry. Service tests and synthetic browser CORS/IndexedDB/video-decoding checks passed; production model routing, plugin versions, presenter Base64 output, OSS/content CORS, paid end-to-end generation, billing and remaining fault injection are unverified. See repository `docs/media-reference-fix-verification.md`; do not treat HTTP 200 or a visible external URL as acceptance.
+
 - 韭菜盒子内置 MCP 工具模式：携带 `agentMode=tools` 的连接 fragment 应自动填写本地地址/token、清理 fragment、连接 SSE 并上报画布；刷新后仍为工具模式，页面不请求 `/agent/codex/*`，无需 Codex 登录。确认写操作开关应保留用户偏好，读写节点、连线、撤销和生成仍走原画布链路；手动切回 Codex 后原聊天/历史/Skills/审批保留。Web 17 项测试及 Agent 操作/Session 31 项已通过，真实浏览器与桌面联调、跨平台和付费生成未验收；需先发布本网页变更再发布 App。Web 类型检查另有两处既有错误，未随本任务修改。
 
 - Video and prompt panel references: clicking the plus button in the node reference bar (on video, image, or config nodes) now opens a menu to directly upload a local reference image, create a new image node and connect it on the upstream side, or pick existing references from the canvas. Dragging local images directly into the reference bar creates connected image nodes without leaving the panel. When entering canvas picking mode, clicking canvas blank space or pressing ESC exits smoothly without freezing or locking the viewport.

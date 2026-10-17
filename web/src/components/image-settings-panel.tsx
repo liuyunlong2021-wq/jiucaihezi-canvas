@@ -1,6 +1,8 @@
 import { type ReactNode, useState } from "react";
 import { ConfigProvider, Switch } from "antd";
 import { useTranslation } from "react-i18next";
+import { resolveModelRequestConfig } from "@/stores/use-config-store";
+import { imageContract, imageContractParams, yihongImageSizes } from "@/lib/newapi-media-contract";
 
 import i18n from "@/i18n";
 import { type CanvasTheme } from "@/lib/canvas-theme";
@@ -15,7 +17,12 @@ const qualityOptions = [
 ];
 const DIMENSION_STEP = 16;
 
-export const imageQualityOptions = qualityOptions.map((item) => ({ value: item.value, get label() { return i18n.t(`settingsPanels.common.${item.labelKey}`); } }));
+export const imageQualityOptions = qualityOptions.map((item) => ({
+    value: item.value,
+    get label() {
+        return i18n.t(`settingsPanels.common.${item.labelKey}`);
+    },
+}));
 export const imageAspectOptions = mediaRatioOptions.map((item) => ({ value: item.value, label: item.value === "auto" ? i18n.t("settingsPanels.common.auto") : item.value }));
 export const imageScaleOptions = mediaScaleOptions.map((value) => ({ value, label: value === "auto" ? i18n.t("settingsPanels.common.auto") : value }));
 
@@ -31,15 +38,26 @@ type ImageSettingsPanelProps = {
 
 export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5", maxCount = 15, quickCount = 10 }: ImageSettingsPanelProps) {
     const { t } = useTranslation();
+    const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
+    const contract = imageContract(requestConfig.baseUrl, requestConfig.model);
+    if (contract?.startsWith("yihong")) maxCount = 1;
     const [snapDimensionToStep, setSnapDimensionToStep] = useState(true);
     const quality = config.quality || "auto";
     const count = Math.max(1, Math.min(maxCount, Math.floor(Math.abs(Number(config.count)) || 1)));
     const activeSize = config.size || "auto";
     const transparentBackground = config.background === "transparent";
-    const selectedScale = inferMediaScale(activeSize);
+    const selectedScale =
+        (contract === "yihong"
+            ? Object.keys(yihongImageSizes)
+                  .find((scale) => Object.values(yihongImageSizes[scale]).includes(activeSize))
+                  ?.toLowerCase()
+            : undefined) || inferMediaScale(activeSize);
     const selectedRatio = inferMediaRatio(activeSize);
     const dimensions = readMediaDimensions(activeSize, selectedScale, selectedRatio);
-    const applySize = (scale: string, ratio: string) => onConfigChange("size", computeMediaSize(scale, ratio));
+    const applySize = (scale: string, ratio: string) => {
+        const size = contract === "yihong" ? yihongImageSizes[scale.toUpperCase()]?.[ratio] : computeMediaSize(scale, ratio);
+        if (size) onConfigChange("size", size);
+    };
     const selectScale = (scale: string) => applySize(scale, selectedRatio === "auto" ? "1:1" : selectedRatio);
     const selectRatio = (ratio: string) => applySize(selectedScale, ratio);
     const updateDimension = (key: "width" | "height", value: number | null) => {
@@ -61,16 +79,18 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 }}
             >
                 {showTitle ? <div className="text-lg font-semibold">{t("settingsPanels.image.title")}</div> : null}
-                <div className="space-y-2.5">
-                    <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.quality")}</SettingTitle>
-                    <div className="grid grid-cols-4 gap-2.5">
-                        {qualityOptions.map((item) => (
-                            <OptionPill key={item.value} selected={quality === item.value} theme={theme} onClick={() => onConfigChange("quality", item.value)}>
-                                {t(`settingsPanels.common.${item.labelKey}`)}
-                            </OptionPill>
-                        ))}
+                {!contract || contract === "xiaoyi" ? (
+                    <div className="space-y-2.5">
+                        <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.quality")}</SettingTitle>
+                        <div className="grid grid-cols-4 gap-2.5">
+                            {qualityOptions.map((item) => (
+                                <OptionPill key={item.value} selected={quality === item.value} theme={theme} onClick={() => onConfigChange("quality", item.value)}>
+                                    {t(`settingsPanels.common.${item.labelKey}`)}
+                                </OptionPill>
+                            ))}
+                        </div>
                     </div>
-                </div>
+                ) : null}
                 <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-3">
                         <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.size")}</SettingTitle>
@@ -92,29 +112,41 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 <div className="space-y-2.5">
                     <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.resolution")}</SettingTitle>
                     <div className="grid grid-cols-4 gap-2.5">
-                        {mediaScaleOptions.map((value) => (
-                            <OptionPill key={value} selected={selectedScale === value} theme={theme} onClick={() => selectScale(value)}>
-                                {value === "auto" ? t("settingsPanels.common.auto") : value}
-                            </OptionPill>
-                        ))}
+                        {mediaScaleOptions
+                            .filter((value) => contract !== "yihong" || Boolean(yihongImageSizes[value.toUpperCase()]?.[selectedRatio === "auto" ? "1:1" : selectedRatio]))
+                            .map((value) => (
+                                <OptionPill key={value} selected={selectedScale === value} theme={theme} onClick={() => selectScale(value)}>
+                                    {value === "auto" ? t("settingsPanels.common.auto") : value}
+                                </OptionPill>
+                            ))}
                     </div>
                 </div>
                 <div className="space-y-2.5">
                     <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.aspectRatio")}</SettingTitle>
                     <div className="grid grid-cols-4 gap-2.5">
-                        {mediaRatioOptions.map((item) => (
-                            <button
-                                key={item.value}
-                                type="button"
-                                className="flex h-[72px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border bg-transparent text-sm transition hover:opacity-80"
-                                style={{ borderColor: selectedRatio === item.value ? theme.node.text : theme.node.stroke, background: "transparent", color: theme.node.text }}
-                                onMouseDown={(event) => event.stopPropagation()}
-                                onClick={() => selectRatio(item.value)}
-                            >
-                                <AspectIcon width={item.width} height={item.height} color={theme.node.text} />
-                                <span>{item.value === "auto" ? t("settingsPanels.common.auto") : item.value}</span>
-                            </button>
-                        ))}
+                        {mediaRatioOptions
+                            .filter((item) => {
+                                if (!contract || contract === "xiaoyi") return true;
+                                try {
+                                    imageContractParams(contract, { quality: selectedScale === "4k" ? "high" : selectedScale === "2k" ? "medium" : "low", size: item.value }, 1, 0);
+                                    return true;
+                                } catch {
+                                    return false;
+                                }
+                            })
+                            .map((item) => (
+                                <button
+                                    key={item.value}
+                                    type="button"
+                                    className="flex h-[72px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border bg-transparent text-sm transition hover:opacity-80"
+                                    style={{ borderColor: selectedRatio === item.value ? theme.node.text : theme.node.stroke, background: "transparent", color: theme.node.text }}
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                    onClick={() => selectRatio(item.value)}
+                                >
+                                    <AspectIcon width={item.width} height={item.height} color={theme.node.text} />
+                                    <span>{item.value === "auto" ? t("settingsPanels.common.auto") : item.value}</span>
+                                </button>
+                            ))}
                     </div>
                 </div>
                 <div className="flex items-center justify-between gap-3">
@@ -161,7 +193,7 @@ export function ImageSettingsTheme({ theme, children }: { theme: CanvasTheme; ch
 }
 
 export function imageQualityLabel(value: string) {
-    return (["auto", "high", "medium", "low"].includes(value) ? i18n.t(`settingsPanels.common.${value}`) : value);
+    return ["auto", "high", "medium", "low"].includes(value) ? i18n.t(`settingsPanels.common.${value}`) : value;
 }
 
 export function imageSizeLabel(size: string) {
