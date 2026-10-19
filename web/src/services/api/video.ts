@@ -12,7 +12,7 @@ import { resolveRhApp, SEEDANCE_POLL_INTERVAL_MS, SEEDANCE_POLL_TIMEOUT_MS } fro
 import { buildWenwuRequest, WENWU_APP_ID } from "./rh-aiapp-nodes";
 import type { ReferenceImage } from "@/types/image";
 import type { MediaGenerationStage, ReferenceAudio, ReferenceVideo } from "@/types/media";
-import { videoContract, validateVideoContract, type VideoContract } from "@/lib/newapi-media-contract";
+import { isMediaPlatform, videoContract, validateVideoContract, type VideoContract } from "@/lib/newapi-media-contract";
 import { uploadReferenceMedia } from "./media-upload";
 
 type VideoResponse = { id: string; status?: string; error?: { message?: string }; url?: string; result_url?: string; video_url?: string; content?: { video_url?: string; url?: string } | null };
@@ -86,6 +86,7 @@ export async function createVideoGenerationTask(config: AiConfig, prompt: string
     const script = resolveModelScript(config, selectedModel);
     if (script) return createPluginVideoTask(requestConfig, selectedModel, script, prompt, references, options);
     assertVideoConfig(requestConfig, requestConfig.model);
+    if (isMediaPlatform(requestConfig.baseUrl) && ["sd2.5-a", "sd2.5-3033"].includes(requestConfig.model)) throw new Error("此灵动型号暂未出现在官方实时能力目录，请先选择已核实型号");
     const contract = videoContract(requestConfig.baseUrl, requestConfig.model);
     if (contract) return createPlatformVideoTask(requestConfig, selectedModel, contract, prompt, references, options);
     if (requestConfig.apiFormat === "gemini") return createGeminiVideoTask(requestConfig, selectedModel, prompt, references, options);
@@ -100,6 +101,10 @@ async function createPlatformVideoTask(config: AiConfig, model: string, spec: Vi
     const videos = options?.videos || [];
     const audios = options?.audios || [];
     validateVideoContract(spec, { seconds, resolution, ratio, mode: config.videoMode, counts: [references.length, videos.length, audios.length], prompt });
+    if (spec.plugin === "lingdong" && videos.length) {
+        if (videos.some((video) => !video.durationMs || !Number.isFinite(video.durationMs) || video.durationMs <= 0)) throw new Error("请先读取灵动参考视频的有效时长");
+        if (videos.reduce((total, video) => total + video.durationMs!, 0) + seconds * 1000 > 25_000) throw new Error("灵动参考视频总时长加生成时长不能超过 25 秒");
+    }
     if (spec.layout === "prime" || spec.layout === "h3") {
         const min = spec.layout === "h3" ? 2 : 1;
         videos.forEach((item) => mediaDuration(item, min));
@@ -131,6 +136,9 @@ async function createPlatformVideoTask(config: AiConfig, model: string, spec: Vi
         body = { model: config.model, prompt, seconds, ratio, resolution };
         if (spec.plugin === "fk") {
             body = { model: config.model, prompt, duration: seconds, ratio, resolution, imageUrls: images, videoUrls, audioUrls };
+        } else if (spec.plugin === "lingdong") {
+            body = { model: config.model, prompt, duration: seconds, ratio, images, videos: videoUrls, audios: audioUrls,
+                ...(spec.resolutions.length ? { resolution } : {}) };
         } else if (spec.plugin === "xiaoyi") {
             body = { model: config.model, prompt, seconds, aspect_ratio: ratio, resolution, ...(images[0] ? { image: images[0] } : {}) };
         } else if (spec.layout === "super" || spec.layout === "prime") {

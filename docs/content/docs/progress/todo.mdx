@@ -5,6 +5,8 @@ description: Planned follow-up work
 
 # TODO
 
+- 灵动 R2 上线闸门：NewAPI 已激活，私有读写、旧 OSS 授权及公网跨域预检通过；下一步部署 v0.20.5 画布，验真实浏览器直传、灵动对私有签名 URL 的读取、一次生成及下载/保存/账单。实现细节已移入 Pending Tests；不迁移其他渠道，不自动删除素材、不自动重发收费任务，试验后人工清理测试对象。
+
 - Current FK gate: deploy the new OSS+JSON canvas path with FK 0.3.4, then validate grants, OSS browser CORS, a single generation, task restoration, playback/download and billing. The transport switch below is implemented locally and tracked in Pending Tests; do not repeatedly create paid tasks.
 
 - Supersedes the 0.3.3 gate below: FK must activate 0.3.4 to fix file decoding; verify actual upstream forwarding and generation, not only decode/build fixtures. Canvas v0.20.3 already has the runtime contract.

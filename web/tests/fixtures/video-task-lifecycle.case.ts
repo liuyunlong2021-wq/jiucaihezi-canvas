@@ -8,13 +8,14 @@ let postError: Error | undefined;
 let uploadSequence = 0;
 let abortAfterUpload: AbortController | undefined;
 const pluginRoot = process.env.NEWAPI_PLUGINS_DIR || resolve(import.meta.dir, "../../../../jiucaihezi-app/newapi-plugins");
-const hasPlugins = ["fk", "xiaoyi-image", "yihong"].every((file) => existsSync(join(pluginRoot, `${file}.plugin.js`)));
+const hasPlugins = ["fk", "xiaoyi-image", "yihong", "lingdong"].every((file) => existsSync(join(pluginRoot, `${file}.plugin.js`)));
 if (!hasPlugins) console.warn("EXTERNAL_CONTRACT_UNAVAILABLE: set NEWAPI_PLUGINS_DIR to verify the real NewAPI plugins; service checks still run.");
 const contractCases: Array<{ model: string; plugin: string; body: unknown }> = [];
 let state: Record<string, unknown> = { id: "real-task-id", status: "queued" };
 let content = new Blob(["video fixture"], { type: "video/mp4" });
 let uploadStatus = 204;
 let authorizationStatus = 200;
+let badR2Grant = false;
 const gets: Array<{ url: string; options: unknown }> = [];
 mock.module("@/i18n", () => ({ default: { t: (key: string) => key } }));
 mock.module("axios", () => ({
@@ -43,6 +44,14 @@ const requests: Array<{ url: string; options?: RequestInit }> = [];
 globalThis.fetch = mock(async (url: RequestInfo | URL, options?: RequestInit) => {
     if (String(url).startsWith("data:")) return oldFetch(url, options);
     requests.push({ url: String(url), options });
+    if (String(url).endsWith("/api/creations/lingdong/upload-url")) {
+        const key = `lingdong-temp/17/${String(++uploadSequence).padStart(32, "0")}.png`;
+        const root = "https://d055e5deea504cb25551755cc486a61a.r2.cloudflarestorage.com/jiucaihezi-media-test/";
+        const { content_type } = JSON.parse(String(options?.body));
+        return Response.json({ method: "PUT", headers: { "Content-Type": content_type },
+            upload_url: `${root}${key}?X-Amz-Signature=put&X-Amz-Expires=300`,
+            asset_url: `${badR2Grant ? "https://evil.invalid/" : root}${key}?X-Amz-Signature=get&X-Amz-Expires=21600` }, { status: authorizationStatus });
+    }
     if (String(url).endsWith("/api/creations/upload-url")) {
         const key = `creation-temp/${++uploadSequence}`;
         return Response.json(
@@ -55,7 +64,7 @@ globalThis.fetch = mock(async (url: RequestInfo | URL, options?: RequestInit) =>
 }) as typeof fetch;
 const { defaultConfig, guessCapability, videoModelSelectionSeconds } = await import("../../src/stores/use-config-store");
 const { createVideoGenerationTask, pollVideoGenerationTask } = await import("../../src/services/api/video");
-const { validateUploadGrant } = await import("../../src/services/api/media-upload");
+const { validateUploadGrant, validateR2UploadGrant } = await import("../../src/services/api/media-upload");
 afterAll(() => {
     globalThis.fetch = oldFetch;
     mock.restore();
@@ -142,6 +151,72 @@ test("FK upload failure, invalid settings and cancellation never submit; a rejec
     }
 });
 
+test("Lingdong uploads original bytes to R2, preserves signed URLs and uses JSON duration", async () => {
+    const start = requests.length;
+    await createVideoGenerationTask(config("SD-2.5-特价-2", 30, "720p"), "p", [reference]);
+    const [authorization, put] = requests.slice(start);
+    expect(JSON.parse(String(authorization.options?.body))).toMatchObject({ model: "SD-2.5-特价-2", content_type: "image/png", size: 1 });
+    expect(put.options).toMatchObject({ method: "PUT", headers: { "Content-Type": "image/png" }, credentials: "omit", redirect: "error" });
+    expect(put.options?.body).toBeInstanceOf(Blob);
+    expect(await (put.options?.body as Blob).text()).toBe("x");
+    const body = posts.at(-1)!.body as Record<string, unknown>;
+    expect(body).toMatchObject({ model: "SD-2.5-特价-2", duration: 30, ratio: "9:16", images: [put.url.replace("X-Amz-Signature=put&X-Amz-Expires=300", "X-Amz-Signature=get&X-Amz-Expires=21600")] });
+    expect(body.seconds).toBeUndefined();
+    expect(body.resolution).toBeUndefined(); // Catalog fixes this model's resolution; omit stale UI values.
+});
+test("Lingdong rejects failed grants, cross-host URLs, oversize originals and cancellation without submitting", async () => {
+    const cfg = config("SD-2.5-特价-2", 30, "720p");
+    const before = posts.length;
+    try {
+        badR2Grant = true;
+        await expect(createVideoGenerationTask(cfg, "p", [reference])).rejects.toThrow();
+        badR2Grant = false;
+        authorizationStatus = 503;
+        await expect(createVideoGenerationTask(cfg, "p", [reference])).rejects.toThrow();
+        authorizationStatus = 200;
+        uploadStatus = 403;
+        await expect(createVideoGenerationTask(cfg, "p", [reference])).rejects.toThrow();
+        uploadStatus = 204;
+        abortAfterUpload = new AbortController();
+        await expect(createVideoGenerationTask(cfg, "p", [reference], { signal: abortAfterUpload.signal })).rejects.toThrow();
+        abortAfterUpload = undefined;
+        const { uploadReferenceMedia } = await import("../../src/services/api/media-upload");
+        const count = requests.length;
+        await expect(uploadReferenceMedia({ ...cfg, baseUrl: "https://api.jiucaihezi.studio", model: "SD-2.5-特价-2" }, new Blob([new Uint8Array((20 << 20) + 1)], { type: "image/png" }), "large.png")).rejects.toThrow();
+        expect(requests.length).toBe(count);
+        expect(posts.length).toBe(before);
+    } finally {
+        badR2Grant = false; authorizationStatus = 200; uploadStatus = 204; abortAfterUpload = undefined;
+    }
+});
+test("R2 allows a real-sized Blob, refuses altered grants and never falls back to OSS", async () => {
+    const { uploadReferenceMedia } = await import("../../src/services/api/media-upload");
+    const cfg = { ...config("SD-2.5-特价-2", 30, "720p"), baseUrl: "https://api.jiucaihezi.studio", model: "SD-2.5-特价-2" };
+    const start = requests.length;
+    await uploadReferenceMedia(cfg, new Blob([new Uint8Array(1024)], { type: "image/png" }), "fixture.png");
+    expect(requests.slice(start).every((request) => !request.url.includes("aliyuncs.com"))).toBe(true);
+    const put = requests.at(-1)!;
+    const valid = { method: "PUT", upload_url: put.url, asset_url: put.url.replace("X-Amz-Signature=put&X-Amz-Expires=300", "X-Amz-Signature=get&X-Amz-Expires=21600"), headers: { "Content-Type": "image/png" } };
+    for (const bad of [
+        { ...valid, method: "POST" },
+        { ...valid, headers: { "Content-Type": "image/png", Authorization: "leak" } },
+        { ...valid, upload_url: valid.upload_url.replace("https:", "http:") },
+        { ...valid, asset_url: valid.asset_url.replace("jiucaihezi-media-test", "another-bucket") },
+        { ...valid, asset_url: valid.asset_url.replace("21600", "300") },
+    ]) expect(() => validateR2UploadGrant(bad, "image/png")).toThrow();
+});
+test("Lingdong validates reference-video duration and unavailable models before uploads or generation", async () => {
+    const start = requests.length, count = posts.length;
+    const video = { id: "v", name: "ref.mp4", type: "video/mp4", url: "data:video/mp4;base64,eA==" };
+    for (const durationMs of [undefined, 16_000])
+        await expect(createVideoGenerationTask(config("cvk-2.5-720", 10, "720p"), "p", [reference], { videos: [{ ...video, durationMs }] })).rejects.toThrow();
+    for (const model of ["sd2.5-a", "sd2.5-3033"])
+        await expect(createVideoGenerationTask(config(model, 10, "720p"), "p", [reference])).rejects.toThrow("官方实时能力目录");
+    expect(requests.length).toBe(start);
+    expect(posts.length).toBe(count);
+    await createVideoGenerationTask(config("cvk-2.5-720", 10, "720p"), "p", [reference], { videos: [{ ...video, durationMs: 15_000 }], audios: [{ id: "a", name: "ref.mp3", type: "audio/mpeg", url: "data:audio/mpeg;base64,eA==" }] });
+    expect(posts.at(-1)?.body).toMatchObject({ duration: 10, resolution: "720p", images: [expect.stringContaining("r2.cloudflarestorage.com")], videos: [expect.stringContaining("r2.cloudflarestorage.com")], audios: [expect.stringContaining("r2.cloudflarestorage.com")] });
+});
 test("every known video model creates an immediate real task", async () => {
     for (const [model, spec] of Object.entries(videoContracts)) {
         const task = await createVideoGenerationTask(config(model, spec.min, spec.resolutions[0] || "720p"), "p", [reference]);
@@ -153,7 +228,7 @@ test("every known video model creates an immediate real task", async () => {
 });
 test.skipIf(!hasPlugins)("actual external plugins accept the generated video contracts", async () => {
     const plugins: Record<string, any> = {};
-    for (const [name, file] of Object.entries({ fk: "fk", xiaoyi: "xiaoyi-image", yihong: "yihong" })) plugins[name] = await import(join(pluginRoot, `${file}.plugin.js`));
+    for (const [name, file] of Object.entries({ fk: "fk", xiaoyi: "xiaoyi-image", yihong: "yihong", lingdong: "lingdong" })) plugins[name] = await import(join(pluginRoot, `${file}.plugin.js`));
     for (const { model, plugin: pluginName, body } of contractCases) {
         const value =
             body instanceof FormData
@@ -172,6 +247,11 @@ test.skipIf(!hasPlugins)("actual external plugins accept the generated video con
             expect(request.bodyType).toBeUndefined();
             expect(request.body.imageUrls).toEqual((body as Record<string, unknown>).imageUrls);
             expect(request.body.duration).toBe((body as Record<string, unknown>).duration);
+        }
+        if (pluginName === "lingdong") {
+            expect(request.body.images).toEqual((body as Record<string, unknown>).images);
+            expect(request.body.duration).toBe((body as Record<string, unknown>).duration);
+            expect(request.url).toBe("https://www.lingdongapi.com/v1/videos");
         }
     }
 });

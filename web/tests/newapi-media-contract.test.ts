@@ -5,6 +5,14 @@ test("platform matching is an exact origin, not a hostname substring", () => {
     expect(videoContract("https://api.jiucaihezi.studio.evil.invalid", "grok-imagine-video-1.5")).toBeUndefined();
     expect(videoContract("https://api.jiucaihezi.studio", "constructor")).toBeUndefined();
 });
+test("Lingdong experiment uses verified public IDs only, URL transport and official constraints", () => {
+    const spec = videoContract("https://api.jiucaihezi.studio", "SD-2.5-特价-2")!;
+    expect(spec).toMatchObject({ plugin: "lingdong", transport: "urls", defaultSeconds: 30, seconds: [30], refs: [10, 0, 0] });
+    expect(() => validateVideoContract(spec, { seconds: 30, resolution: "720p", ratio: "9:16", mode: "reference", counts: [1, 0, 0] })).not.toThrow();
+    expect(() => validateVideoContract(spec, { seconds: 10, resolution: "720p", ratio: "9:16", mode: "reference", counts: [1, 0, 0] })).toThrow();
+    expect(videoContract("https://other.invalid", "SD-2.5-特价-2")).toBeUndefined();
+    expect(videoContract("https://api.jiucaihezi.studio", "sd2.5-a")).toBeUndefined();
+});
 test("FK H3 public mapping uses the same OSS URL contract as its upstream ID", () => {
     const spec = videoContract("https://api.jiucaihezi.studio", "fk-MiniMaxh3")!;
     expect(spec).toBe(videoContracts["ft-video-v1-77e8ee7a636f15dac27b2ce6d6fcd746"]);

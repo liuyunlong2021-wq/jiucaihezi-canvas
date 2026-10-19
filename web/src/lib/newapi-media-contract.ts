@@ -73,7 +73,7 @@ export function imageContractParams(contract: ImageContract, config: { quality: 
 }
 
 export type VideoContract = {
-    plugin: "fk" | "xiaoyi" | "yihong";
+    plugin: "fk" | "xiaoyi" | "yihong" | "lingdong";
     transport: "files" | "urls";
     min: number;
     max: number;
@@ -139,6 +139,18 @@ const yihongDefaultSeconds: Record<string, number> = {
 Object.entries(yihongDefaultSeconds).forEach(([model, seconds]) => {
     videoContracts[model].defaultSeconds = seconds;
 });
+// Lingdong plugin 0.3.0 intersected with the vendor's live /api/pricing catalog.
+// sd2.5-a / sd2.5-3033 are absent there; do not invent their current capabilities.
+for (const model of ["SD-2.5-特价", "SD-2.5-特价-2", "cvk-2.5-480", "cvk-2.5-720", "cvk-2.5-1080", "sd-2.5-720-v3", "sd2.5-101010", "sd2.5-301010"]) {
+    const fixed = model.startsWith("SD-");
+    videoContracts[model] = {
+        plugin: "lingdong", transport: "urls", min: fixed ? 30 : 4, max: 30,
+        defaultSeconds: fixed ? 30 : 10, seconds: fixed ? [30] : undefined,
+        refs: fixed ? [model.endsWith("-2") ? 10 : 30, 0, 0] : [model === "sd2.5-101010" ? 10 : 30, 10, 10],
+        ratios: fixed || model.startsWith("sd2.5-") ? [...ratios, "21:9"] : ratios,
+        resolutions: fixed ? [] : [model.endsWith("480") ? "480p" : model.endsWith("1080") ? "1080p" : "720p"],
+    };
+}
 export function videoContract(baseUrl: string, model: string) {
     return isMediaPlatform(baseUrl) ? videoContracts[model] : undefined;
 }
