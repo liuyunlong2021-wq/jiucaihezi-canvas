@@ -1,6 +1,8 @@
 # 灵动 R2 小范围试验
 
-## 图片结果取回修复（v0.20.7 待部署）
+## 图片结果取回修复（v0.20.7 已部署，真实保存待验收）
+
+提交 `6633e08f314dca2dc5e17bf506bd841d1282e43e` 的 Actions `39209291009` 成功，生产画布已更新，镜像 digest `sha256:6411a9daa8dd86c59b87ad241cb500fef97a5d5e319caf3a834bb36a0d04c88a`。公网首页及 `/assets/index-BgMz64de.js` 均200，脚本确认版本0.20.7和灵动请求b64_json分支。NewAPI镜像未变且healthy，不改插件、R2、端口或原env。备份 `/root/canvas-v0.20.7.z70UHX`，旧容器 `infinite-canvas-backup-v0.20.6-z70UHX`，回滚脚本 `rollback.sh`；配置备份含敏感信息，不输出正文。
 
 用户确认两次灵动生成成功，v0.20.6 请求生成200后，结果 `img_...` 读取报CORS。固定 rc.40 的 `controller/plugin_protocol_image.go` 已支持：客户端请求 `response_format: b64_json` 时，宿主下载插件渲染的 `data[].url` 并补入 Base64。此前画布两处发送 `url` 绕过此能力；现已改为 b64_json，插件向灵动仍发url，无须改插件或重建NewAPI。28项画布测试通过，覆盖两图片型号的文生图/图生图参数及真实插件合同。
 

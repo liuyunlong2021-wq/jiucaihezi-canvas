@@ -2,6 +2,8 @@
 
 ## 当前发布交接
 
+v0.20.7 已发布部署，仅修正画布灵动图片请求为 `b64_json`，由现有 NewAPI 下载外部结果再返回；NewAPI、插件和R2不变。公网 `/assets/index-BgMz64de.js` 已核对版本/请求配置，镜像digest及备份回滚见 `lingdong-r2-experiment.md` 当前节。没有测试收费生成，真实返回Base64与本地保存待用户验收。
+
 v0.20.6 已发布并部署，灵动图片切换为 R2→JSON URL，新四模型服务端白名单同步部署且 NewAPI healthy；原四份 Compose 配置仅镜像变化，env/挂载保持。备份 `/root/jc-lingdong-fourmodels.DjCby8`，旧画布容器 `infinite-canvas-backup-v0.20.5-DjCby8`。公网新资源 `/assets/index-B_DW5R7R.js` 含版本与四个公开名，R2预检/未鉴权跨域检查通过；真实生成/下载/计费待用户验收。完整镜像ID、回滚与边界见 `lingdong-r2-experiment.md` 当前节；以下旧版本为历史。
 
 v0.20.5 增加灵动私有 R2 直传与 JSON 视频合同，其他渠道保留 OSS。配套 NewAPI 已由用户激活并完成 R2 小图读写、独立 HEAD 和旧 OSS 授权验证；公网新入口预检 204、未鉴权 POST 401，允许画布跨域来源。前端更新仍沿用下面的容器端口、网络及原 env，不把 R2 Secret 放进画布容器。真实浏览器与付费出片/下载仍待验收，详见 `deploy/lingdong-r2-experiment.md`。以下 v0.20.4 及更早交接作为历史证据。
