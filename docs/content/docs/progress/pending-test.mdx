@@ -5,7 +5,7 @@ description: Implemented changes that still need manual verification
 
 # Pending Tests
 
-- 灵动 R2 试验（v0.20.5）：8 个已核实型号使用私有测试桶签名 PUT、JSON 素材 URL 与原任务下载链路，未核实的两个型号在上传前拒绝；原有节点/脚本、其他渠道 OSS 不变。隔离媒体回归与服务端测试通过；用户已激活 NewAPI，私有上传/GET/HEAD、R2 CORS 探针与旧 OSS 授权通过，公网 OPTIONS 204/未鉴权 POST 401 及跨域头已核对。画布需部署新版，再逐项验真实浏览器上传、灵动读取、出片、任务恢复、本地保存和账单，尚未调用收费生成。完整边界和步骤见仓库 `deploy/lingdong-r2-experiment.md`。
+- 灵动插件 0.4.0 配套：仅两个 `灵动-sd2.5-满血-301010` 系列视频和 `灵动-gpt-image-2.5-flare/sunburst` 图片公开名。图生图读取参考原图、依序直传现有私有 R2，再发 `/images/generations` JSON `images` URL 数组；不再发 multipart `/images/edits`。文生图无需上传，默认一张；已有脚本优先且不覆盖。视频沿用 JSON 素材和任务恢复；R2 签名白名单同步四个名称，20 MiB/5分钟上传/6小时读取不变，其他渠道不变。画布 28 项（含隔离服务回归）、真实四插件请求合同、插件 147 项及 Go 三包通过；未构建发布、未更新生产白名单、未触发收费生成。真实图片返回格式、R2 URL 读取、下载/保存/账单待逐模型验收，详见 `deploy/lingdong-r2-experiment.md`。
 
 - FK video now uses local originals → existing OSS direct upload → JSON `duration/ratio/resolution/imageUrls/videoUrls/audioUrls` for seven models and their public aliases. Upload/authorization failure or cancellation prevents generation; a rejected generation POST is never automatically retried or sent as multipart. Submission errors now expose the API response message. Requires a new canvas deployment with FK 0.3.4; paid output/download/billing and browser OSS CORS remain pending. This supersedes the local-file transport items below; they record earlier iterations.
 

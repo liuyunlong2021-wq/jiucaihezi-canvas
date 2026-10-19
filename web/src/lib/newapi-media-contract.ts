@@ -31,7 +31,7 @@ const xiaoyiImages = [
     "grok-imagine-image",
 ];
 const yihongImages = ["gpt-image-2-1K-4K", "gpt-image-2", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "yihong-gpt-image-2", "yihong-gpt-image-2.5-flare", "yihong-gpt-image-2.5-sunburst"];
-export type ImageContract = "fk" | "fk-banana" | "xiaoyi" | "yihong" | "yihong-gemini";
+export type ImageContract = "fk" | "fk-banana" | "xiaoyi" | "yihong" | "yihong-gemini" | "lingdong";
 export const yihongImageSizes: Record<string, Record<string, string>> = {
     "1K": { "1:1": "1024x1024", "16:9": "1536x864", "9:16": "864x1536", "4:3": "1536x1152", "3:4": "1152x1536", "3:2": "1536x1024", "2:3": "1024x1536" },
     "2K": { "1:1": "2048x2048", "16:9": "2048x1152", "9:16": "1152x2048", "4:3": "2048x1536", "3:4": "1536x2048" },
@@ -39,6 +39,7 @@ export const yihongImageSizes: Record<string, Record<string, string>> = {
 };
 export function imageContract(baseUrl: string, model: string): ImageContract | undefined {
     if (!isMediaPlatform(baseUrl)) return;
+    if (["灵动-gpt-image-2.5-flare", "灵动-gpt-image-2.5-sunburst"].includes(model)) return "lingdong";
     const fk = fkImageModels.indexOf(model);
     if (fk >= 0) return fk < 4 ? "fk" : "fk-banana";
     if (xiaoyiImages.includes(model)) return "xiaoyi";
@@ -46,6 +47,7 @@ export function imageContract(baseUrl: string, model: string): ImageContract | u
     if (model === "gemini-nano-banana-2.1") return "yihong-gemini";
 }
 export function imageContractParams(contract: ImageContract, config: { quality: string; size: string }, count: number, references: number): Record<string, string | number> {
+    if (contract === "lingdong") return { response_format: "url" };
     if (contract === "xiaoyi") return { response_format: "b64_json" };
     const max = contract === "fk-banana" ? 8 : contract === "yihong-gemini" ? 1 : 10;
     if (references > max) throw new Error(`该模型最多接受 ${max} 张参考图`);
@@ -139,16 +141,11 @@ const yihongDefaultSeconds: Record<string, number> = {
 Object.entries(yihongDefaultSeconds).forEach(([model, seconds]) => {
     videoContracts[model].defaultSeconds = seconds;
 });
-// Lingdong plugin 0.3.0 intersected with the vendor's live /api/pricing catalog.
-// sd2.5-a / sd2.5-3033 are absent there; do not invent their current capabilities.
-for (const model of ["SD-2.5-特价", "SD-2.5-特价-2", "cvk-2.5-480", "cvk-2.5-720", "cvk-2.5-1080", "sd-2.5-720-v3", "sd2.5-101010", "sd2.5-301010"]) {
-    const fixed = model.startsWith("SD-");
+// Lingdong 0.4.0 public aliases; capabilities from the vendor's /api/pricing catalog.
+for (const model of ["灵动-sd2.5-满血-301010", "灵动-sd2.5-满血-301010-2"]) {
     videoContracts[model] = {
-        plugin: "lingdong", transport: "urls", min: fixed ? 30 : 4, max: 30,
-        defaultSeconds: fixed ? 30 : 10, seconds: fixed ? [30] : undefined,
-        refs: fixed ? [model.endsWith("-2") ? 10 : 30, 0, 0] : [model === "sd2.5-101010" ? 10 : 30, 10, 10],
-        ratios: fixed || model.startsWith("sd2.5-") ? [...ratios, "21:9"] : ratios,
-        resolutions: fixed ? [] : [model.endsWith("480") ? "480p" : model.endsWith("1080") ? "1080p" : "720p"],
+        plugin: "lingdong", transport: "urls", min: 4, max: 30, defaultSeconds: 10,
+        refs: [30, 10, 10], ratios: [...ratios, "21:9"], resolutions: ["720p"],
     };
 }
 export function videoContract(baseUrl: string, model: string) {

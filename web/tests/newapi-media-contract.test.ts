@@ -1,17 +1,19 @@
 import { expect, test } from "bun:test";
-import { imageContractParams, videoContract, videoContracts, validateVideoContract } from "../src/lib/newapi-media-contract";
+import { imageContract, imageContractParams, videoContract, videoContracts, validateVideoContract } from "../src/lib/newapi-media-contract";
 
 test("platform matching is an exact origin, not a hostname substring", () => {
     expect(videoContract("https://api.jiucaihezi.studio.evil.invalid", "grok-imagine-video-1.5")).toBeUndefined();
     expect(videoContract("https://api.jiucaihezi.studio", "constructor")).toBeUndefined();
 });
 test("Lingdong experiment uses verified public IDs only, URL transport and official constraints", () => {
-    const spec = videoContract("https://api.jiucaihezi.studio", "SD-2.5-特价-2")!;
-    expect(spec).toMatchObject({ plugin: "lingdong", transport: "urls", defaultSeconds: 30, seconds: [30], refs: [10, 0, 0] });
+    const spec = videoContract("https://api.jiucaihezi.studio", "灵动-sd2.5-满血-301010-2")!;
+    expect(spec).toMatchObject({ plugin: "lingdong", transport: "urls", defaultSeconds: 10, min: 4, max: 30, refs: [30, 10, 10], resolutions: ["720p"] });
     expect(() => validateVideoContract(spec, { seconds: 30, resolution: "720p", ratio: "9:16", mode: "reference", counts: [1, 0, 0] })).not.toThrow();
-    expect(() => validateVideoContract(spec, { seconds: 10, resolution: "720p", ratio: "9:16", mode: "reference", counts: [1, 0, 0] })).toThrow();
+    expect(() => validateVideoContract(spec, { seconds: 3, resolution: "720p", ratio: "9:16", mode: "reference", counts: [1, 0, 0] })).toThrow();
     expect(videoContract("https://other.invalid", "SD-2.5-特价-2")).toBeUndefined();
     expect(videoContract("https://api.jiucaihezi.studio", "sd2.5-a")).toBeUndefined();
+    expect(videoContract("https://api.jiucaihezi.studio", "SD-2.5-特价-2")).toBeUndefined();
+    for (const name of ["灵动-gpt-image-2.5-flare", "灵动-gpt-image-2.5-sunburst"]) expect(imageContract("https://api.jiucaihezi.studio", name)).toBe("lingdong");
 });
 test("FK H3 public mapping uses the same OSS URL contract as its upstream ID", () => {
     const spec = videoContract("https://api.jiucaihezi.studio", "fk-MiniMaxh3")!;

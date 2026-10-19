@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { fkImageModels } from "../../src/lib/newapi-media-contract";
 const posts: Array<{ url: string; body: any }> = [];
 const pluginRoot = process.env.NEWAPI_PLUGINS_DIR || resolve(import.meta.dir, "../../../../jiucaihezi-app/newapi-plugins");
-const hasPlugins = ["fk", "xiaoyi-image", "yihong"].every((file) => existsSync(join(pluginRoot, `${file}.plugin.js`)));
+const hasPlugins = ["fk", "xiaoyi-image", "yihong", "lingdong"].every((file) => existsSync(join(pluginRoot, `${file}.plugin.js`)));
 const contractCases: Array<{ file: string; model: string; edit: boolean; body: any }> = [];
 if (!hasPlugins) console.warn("EXTERNAL_CONTRACT_UNAVAILABLE: set NEWAPI_PLUGINS_DIR to verify the real NewAPI plugins; service checks still run.");
 mock.module("@/i18n", () => ({ default: { t: (key: string) => key } }));
@@ -25,7 +25,19 @@ mock.module("axios", () => ({
 }));
 const { defaultConfig, guessCapability } = await import("../../src/stores/use-config-store");
 const { requestGeneration, requestEdit } = await import("../../src/services/api/image");
-afterAll(() => mock.restore());
+const oldFetch = globalThis.fetch;
+const uploads: Array<{ url: string; options?: RequestInit }> = [];
+let uploadStatus = 204;
+let abortAfterUpload: AbortController | undefined;
+globalThis.fetch = mock(async (url: RequestInfo | URL, options?: RequestInit) => {
+    if (String(url).startsWith("data:")) return oldFetch(url, options);
+    uploads.push({ url: String(url), options });
+    const root = "https://d055e5deea504cb25551755cc486a61a.r2.cloudflarestorage.com/jiucaihezi-media-test/lingdong-temp/17/" + "a".repeat(32) + ".png";
+    if (String(url).endsWith("/api/creations/lingdong/upload-url")) return Response.json({ method: "PUT", headers: { "Content-Type": "image/png" }, upload_url: root + "?X-Amz-Signature=put&X-Amz-Expires=300", asset_url: root + "?X-Amz-Signature=get&X-Amz-Expires=21600" });
+    abortAfterUpload?.abort();
+    return new Response(null, { status: uploadStatus });
+}) as typeof fetch;
+afterAll(() => { globalThis.fetch = oldFetch; mock.restore(); });
 const models = {
     fk: fkImageModels,
     "xiaoyi-image": [
@@ -84,6 +96,43 @@ test.skipIf(!hasPlugins)("actual external plugins accept the generated image con
         expect(intent.action).toBe(edit ? "image_to_image" : "text_to_image");
         expect(plugin.buildSubmitRequest({ ...ctx, requestBody: intent.requestBody, action: intent.action }).method).toBe("POST");
     }
+});
+test("Lingdong images upload original bytes to R2 then submit JSON, never multipart edits", async () => {
+    for (const model of ["灵动-gpt-image-2.5-flare", "灵动-gpt-image-2.5-sunburst"]) {
+        const before = uploads.length;
+        await requestEdit(config(model), "两人跳舞", [{ id: "ref", name: "a.png", type: "image/png", dataUrl: "data:image/png;base64,eA==" }]);
+        const [grant, put] = uploads.slice(before);
+        expect(grant.url).toEndWith("/api/creations/lingdong/upload-url");
+        expect(JSON.parse(String(grant.options?.body))).toMatchObject({ model, size: 1, content_type: "image/png" });
+        expect(put.options?.method).toBe("PUT");
+        expect(await (put.options?.body as Blob).text()).toBe("x");
+        const { url, body } = posts.at(-1)!;
+        expect(url).toEndWith("/images/generations");
+        expect(body).not.toBeInstanceOf(FormData);
+        expect(body).toMatchObject({ model, n: 1, images: [put.url.replace("Signature=put&X-Amz-Expires=300", "Signature=get&X-Amz-Expires=21600")] });
+        if (hasPlugins) {
+            const plugin = await import(join(pluginRoot, "lingdong.plugin.js"));
+            const context = { model, body: { kind: "json", value: body }, baseUrl: plugin.meta.baseUrl, apiKey: "fixture" };
+            const intent = plugin.protocols.openai_image.decodeRequest(context);
+            expect(intent.action).toBe("image_to_image");
+            expect(plugin.buildSubmitRequest({ ...context, requestBody: intent.requestBody }).body.model).toBe(model.slice(3));
+        }
+        const count = uploads.length;
+        await requestGeneration(config(model), "海边");
+        expect(uploads.length).toBe(count);
+        expect(posts.at(-1)!.body.model).toBe(model);
+    }
+});
+test("Lingdong image upload failure or cancellation never submits a generation", async () => {
+    const count = posts.length;
+    try {
+        uploadStatus = 403;
+        await expect(requestEdit(config("灵动-gpt-image-2.5-flare"), "p", [{ id: "r", name: "a.png", type: "image/png", dataUrl: "data:image/png;base64,eA==" }])).rejects.toThrow();
+        uploadStatus = 204;
+        abortAfterUpload = new AbortController();
+        await expect(requestEdit(config("灵动-gpt-image-2.5-flare"), "p", [{ id: "r", name: "a.png", type: "image/png", dataUrl: "data:image/png;base64,eA==" }], { signal: abortAfterUpload.signal })).rejects.toThrow();
+        expect(posts.length).toBe(count);
+    } finally { uploadStatus = 204; abortAfterUpload = undefined; }
 });
 test("direct OpenAI gpt-image contract is unchanged", async () => {
     await requestGeneration(config("gpt-image-2", "https://api.openai.com"), "p");

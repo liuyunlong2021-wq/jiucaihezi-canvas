@@ -153,19 +153,19 @@ test("FK upload failure, invalid settings and cancellation never submit; a rejec
 
 test("Lingdong uploads original bytes to R2, preserves signed URLs and uses JSON duration", async () => {
     const start = requests.length;
-    await createVideoGenerationTask(config("SD-2.5-特价-2", 30, "720p"), "p", [reference]);
+    await createVideoGenerationTask(config("灵动-sd2.5-满血-301010-2", 30, "720p"), "p", [reference]);
     const [authorization, put] = requests.slice(start);
-    expect(JSON.parse(String(authorization.options?.body))).toMatchObject({ model: "SD-2.5-特价-2", content_type: "image/png", size: 1 });
+    expect(JSON.parse(String(authorization.options?.body))).toMatchObject({ model: "灵动-sd2.5-满血-301010-2", content_type: "image/png", size: 1 });
     expect(put.options).toMatchObject({ method: "PUT", headers: { "Content-Type": "image/png" }, credentials: "omit", redirect: "error" });
     expect(put.options?.body).toBeInstanceOf(Blob);
     expect(await (put.options?.body as Blob).text()).toBe("x");
     const body = posts.at(-1)!.body as Record<string, unknown>;
-    expect(body).toMatchObject({ model: "SD-2.5-特价-2", duration: 30, ratio: "9:16", images: [put.url.replace("X-Amz-Signature=put&X-Amz-Expires=300", "X-Amz-Signature=get&X-Amz-Expires=21600")] });
+    expect(body).toMatchObject({ model: "灵动-sd2.5-满血-301010-2", duration: 30, ratio: "9:16", images: [put.url.replace("X-Amz-Signature=put&X-Amz-Expires=300", "X-Amz-Signature=get&X-Amz-Expires=21600")] });
     expect(body.seconds).toBeUndefined();
-    expect(body.resolution).toBeUndefined(); // Catalog fixes this model's resolution; omit stale UI values.
+    expect(body.resolution).toBe("720p");
 });
 test("Lingdong rejects failed grants, cross-host URLs, oversize originals and cancellation without submitting", async () => {
-    const cfg = config("SD-2.5-特价-2", 30, "720p");
+    const cfg = config("灵动-sd2.5-满血-301010-2", 30, "720p");
     const before = posts.length;
     try {
         badR2Grant = true;
@@ -182,7 +182,7 @@ test("Lingdong rejects failed grants, cross-host URLs, oversize originals and ca
         abortAfterUpload = undefined;
         const { uploadReferenceMedia } = await import("../../src/services/api/media-upload");
         const count = requests.length;
-        await expect(uploadReferenceMedia({ ...cfg, baseUrl: "https://api.jiucaihezi.studio", model: "SD-2.5-特价-2" }, new Blob([new Uint8Array((20 << 20) + 1)], { type: "image/png" }), "large.png")).rejects.toThrow();
+        await expect(uploadReferenceMedia({ ...cfg, baseUrl: "https://api.jiucaihezi.studio", model: "灵动-sd2.5-满血-301010-2" }, new Blob([new Uint8Array((20 << 20) + 1)], { type: "image/png" }), "large.png")).rejects.toThrow();
         expect(requests.length).toBe(count);
         expect(posts.length).toBe(before);
     } finally {
@@ -191,7 +191,7 @@ test("Lingdong rejects failed grants, cross-host URLs, oversize originals and ca
 });
 test("R2 allows a real-sized Blob, refuses altered grants and never falls back to OSS", async () => {
     const { uploadReferenceMedia } = await import("../../src/services/api/media-upload");
-    const cfg = { ...config("SD-2.5-特价-2", 30, "720p"), baseUrl: "https://api.jiucaihezi.studio", model: "SD-2.5-特价-2" };
+    const cfg = { ...config("灵动-sd2.5-满血-301010-2", 30, "720p"), baseUrl: "https://api.jiucaihezi.studio", model: "灵动-sd2.5-满血-301010-2" };
     const start = requests.length;
     await uploadReferenceMedia(cfg, new Blob([new Uint8Array(1024)], { type: "image/png" }), "fixture.png");
     expect(requests.slice(start).every((request) => !request.url.includes("aliyuncs.com"))).toBe(true);
@@ -209,12 +209,12 @@ test("Lingdong validates reference-video duration and unavailable models before 
     const start = requests.length, count = posts.length;
     const video = { id: "v", name: "ref.mp4", type: "video/mp4", url: "data:video/mp4;base64,eA==" };
     for (const durationMs of [undefined, 16_000])
-        await expect(createVideoGenerationTask(config("cvk-2.5-720", 10, "720p"), "p", [reference], { videos: [{ ...video, durationMs }] })).rejects.toThrow();
+        await expect(createVideoGenerationTask(config("灵动-sd2.5-满血-301010", 10, "720p"), "p", [reference], { videos: [{ ...video, durationMs }] })).rejects.toThrow();
     for (const model of ["sd2.5-a", "sd2.5-3033"])
         await expect(createVideoGenerationTask(config(model, 10, "720p"), "p", [reference])).rejects.toThrow("官方实时能力目录");
     expect(requests.length).toBe(start);
     expect(posts.length).toBe(count);
-    await createVideoGenerationTask(config("cvk-2.5-720", 10, "720p"), "p", [reference], { videos: [{ ...video, durationMs: 15_000 }], audios: [{ id: "a", name: "ref.mp3", type: "audio/mpeg", url: "data:audio/mpeg;base64,eA==" }] });
+    await createVideoGenerationTask(config("灵动-sd2.5-满血-301010", 10, "720p"), "p", [reference], { videos: [{ ...video, durationMs: 15_000 }], audios: [{ id: "a", name: "ref.mp3", type: "audio/mpeg", url: "data:audio/mpeg;base64,eA==" }] });
     expect(posts.at(-1)?.body).toMatchObject({ duration: 10, resolution: "720p", images: [expect.stringContaining("r2.cloudflarestorage.com")], videos: [expect.stringContaining("r2.cloudflarestorage.com")], audios: [expect.stringContaining("r2.cloudflarestorage.com")] });
 });
 test("every known video model creates an immediate real task", async () => {

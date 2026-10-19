@@ -5,7 +5,7 @@ description: Planned follow-up work
 
 # TODO
 
-- 灵动 R2 上线闸门：NewAPI 已激活，私有读写、旧 OSS 授权及公网跨域预检通过；下一步部署 v0.20.5 画布，验真实浏览器直传、灵动对私有签名 URL 的读取、一次生成及下载/保存/账单。实现细节已移入 Pending Tests；不迁移其他渠道，不自动删除素材、不自动重发收费任务，试验后人工清理测试对象。
+- 灵动四模型上线闸门：用户已部署 v0.20.5 并激活插件 0.4.0；本地已补齐新名称的图片 R2→JSON 和视频合同，但生产 R2 仍是旧白名单。需以新镜像更新服务端白名单、发布画布，再验图片/视频真实上传、生成、下载/保存/账单。保留原环境和 OSS，不自动删除素材或重发收费任务。
 
 - Current FK gate: deploy the new OSS+JSON canvas path with FK 0.3.4, then validate grants, OSS browser CORS, a single generation, task restoration, playback/download and billing. The transport switch below is implemented locally and tracked in Pending Tests; do not repeatedly create paid tasks.
 

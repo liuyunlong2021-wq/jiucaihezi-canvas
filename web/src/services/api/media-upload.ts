@@ -1,5 +1,5 @@
 import { type AiConfig, withLocalProxy } from "@/stores/use-config-store";
-import { isMediaPlatform, videoContract } from "@/lib/newapi-media-contract";
+import { imageContract, isMediaPlatform, videoContract } from "@/lib/newapi-media-contract";
 
 const r2Origin = "https://d055e5deea504cb25551755cc486a61a.r2.cloudflarestorage.com";
 export function validateR2UploadGrant(value: unknown, contentType: string) {
@@ -42,7 +42,7 @@ export async function uploadReferenceMedia(config: AiConfig, file: Blob, filenam
     if (!isMediaPlatform(config.baseUrl)) throw new Error("此素材上传接口仅适用于韭菜盒子平台");
     signal?.throwIfAborted();
     if (!file.size) throw new Error("参考素材为空");
-    const r2 = videoContract(config.baseUrl, config.model)?.plugin === "lingdong";
+    const r2 = imageContract(config.baseUrl, config.model) === "lingdong" || videoContract(config.baseUrl, config.model)?.plugin === "lingdong";
     if (r2 && file.size > (20 << 20)) throw new Error("R2 参考素材不能超过 20 MiB");
     const origin = new URL(config.baseUrl).origin;
     const contentType = file.type || "application/octet-stream";

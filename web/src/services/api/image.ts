@@ -10,6 +10,7 @@ import { imageToDataUrl } from "@/services/image-storage";
 import { imageSizePresets, inferMediaScale } from "@/lib/media-size";
 import type { ReferenceImage } from "@/types/image";
 import { imageContract, imageContractParams } from "@/lib/newapi-media-contract";
+import { uploadReferenceMedia } from "./media-upload";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
@@ -790,6 +791,23 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const quality = normalizeQuality(config.quality);
     const requestSize = resolveRequestSize(quality, config.size);
     const background = normalizeBackground(config.background);
+    if (imageContract(requestConfig.baseUrl, requestConfig.model) === "lingdong") {
+        try {
+            const images: string[] = [];
+            for (const image of references) {
+                const file = dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image, options) });
+                images.push(await uploadReferenceMedia(requestConfig, file, file.name, options?.signal));
+            }
+            options?.signal?.throwIfAborted();
+            const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/generations"), {
+                model: requestConfig.model, prompt: withSystemPrompt(requestConfig, requestPrompt), n, images,
+                ...(requestSize ? { size: requestSize } : {}), response_format: "url",
+            }, { headers: aiHeaders(requestConfig, "application/json"), signal: options?.signal, timeout: IMAGE_REQUEST_TIMEOUT_MS });
+            return await parseImagePayload(response.data);
+        } catch (error) {
+            throw new Error(readAxiosError(error, apiText("requestFailed")));
+        }
+    }
     const formData = new FormData();
     formData.set("model", requestConfig.model);
     formData.set("prompt", withSystemPrompt(requestConfig, requestPrompt));
