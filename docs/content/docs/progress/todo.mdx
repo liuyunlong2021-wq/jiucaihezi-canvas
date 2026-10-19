@@ -5,7 +5,7 @@ description: Planned follow-up work
 
 # TODO
 
-- 灵动四模型上线闸门：用户已部署 v0.20.5 并激活插件 0.4.0；本地已补齐新名称的图片 R2→JSON 和视频合同，但生产 R2 仍是旧白名单。需以新镜像更新服务端白名单、发布画布，再验图片/视频真实上传、生成、下载/保存/账单。保留原环境和 OSS，不自动删除素材或重发收费任务。
+- 灵动四模型上线闸门：画布 v0.20.6 与服务端四模型白名单已部署，原环境/挂载/OSS 保留，公网资源与接口预检通过；仍需用户逐模型验证图片/视频真实上传、生成、下载/保存及账单。不自动删除素材或重发收费任务，回滚位置见部署记录。
 
 - Current FK gate: deploy the new OSS+JSON canvas path with FK 0.3.4, then validate grants, OSS browser CORS, a single generation, task restoration, playback/download and billing. The transport switch below is implemented locally and tracked in Pending Tests; do not repeatedly create paid tasks.
 

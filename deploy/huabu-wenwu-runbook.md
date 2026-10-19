@@ -2,6 +2,8 @@
 
 ## 当前发布交接
 
+v0.20.6 已发布并部署，灵动图片切换为 R2→JSON URL，新四模型服务端白名单同步部署且 NewAPI healthy；原四份 Compose 配置仅镜像变化，env/挂载保持。备份 `/root/jc-lingdong-fourmodels.DjCby8`，旧画布容器 `infinite-canvas-backup-v0.20.5-DjCby8`。公网新资源 `/assets/index-B_DW5R7R.js` 含版本与四个公开名，R2预检/未鉴权跨域检查通过；真实生成/下载/计费待用户验收。完整镜像ID、回滚与边界见 `lingdong-r2-experiment.md` 当前节；以下旧版本为历史。
+
 v0.20.5 增加灵动私有 R2 直传与 JSON 视频合同，其他渠道保留 OSS。配套 NewAPI 已由用户激活并完成 R2 小图读写、独立 HEAD 和旧 OSS 授权验证；公网新入口预检 204、未鉴权 POST 401，允许画布跨域来源。前端更新仍沿用下面的容器端口、网络及原 env，不把 R2 Secret 放进画布容器。真实浏览器与付费出片/下载仍待验收，详见 `deploy/lingdong-r2-experiment.md`。以下 v0.20.4 及更早交接作为历史证据。
 
 v0.20.4 发布包含 FK 视频 OSS＋JSON 切换，配合 FK 插件 0.3.4；生产服务器由用户拉取镜像并切换容器。沿用 `/root/canvas-v0.20.2.ZfFFpW/container.env`、bridge、无挂载、`127.0.0.1:3010:3000` 和 unless-stopped；Nginx 不改，旧容器保留供回滚。用户确认 v0.20.3 已上线，但 FK multipart 仍空 500；图生图及清除过期脚本后的文武双修成功，不扩大为 FK 视频已通过。以下旧版本细节作为历史记录。

@@ -5,7 +5,7 @@ description: Implemented changes that still need manual verification
 
 # Pending Tests
 
-- 灵动插件 0.4.0 配套：仅两个 `灵动-sd2.5-满血-301010` 系列视频和 `灵动-gpt-image-2.5-flare/sunburst` 图片公开名。图生图读取参考原图、依序直传现有私有 R2，再发 `/images/generations` JSON `images` URL 数组；不再发 multipart `/images/edits`。文生图无需上传，默认一张；已有脚本优先且不覆盖。视频沿用 JSON 素材和任务恢复；R2 签名白名单同步四个名称，20 MiB/5分钟上传/6小时读取不变，其他渠道不变。画布 28 项（含隔离服务回归）、真实四插件请求合同、插件 147 项及 Go 三包通过；未构建发布、未更新生产白名单、未触发收费生成。真实图片返回格式、R2 URL 读取、下载/保存/账单待逐模型验收，详见 `deploy/lingdong-r2-experiment.md`。
+- 灵动插件 0.4.0 配套（v0.20.6 已部署）：仅两个 `灵动-sd2.5-满血-301010` 系列视频和 `灵动-gpt-image-2.5-flare/sunburst` 图片公开名。图生图读取参考原图、依序直传现有私有 R2，再发 `/images/generations` JSON `images` URL 数组；不再发 multipart `/images/edits`。文生图无需上传，默认一张；已有脚本优先且不覆盖。视频沿用 JSON 素材和任务恢复；生产 R2 签名白名单已同步四个名称，20 MiB/5分钟上传/6小时读取不变，其他渠道不变。画布 28 项（含隔离服务回归）、真实四插件请求合同、插件 147 项及 Go 三包通过；本地构建与 Actions 成功，公网页面/新资源200、R2预检204/未鉴权401和跨域头通过。未触发收费生成；真实图片返回格式、R2 URL 读取、下载/保存/账单仍待逐模型验收，详见 `deploy/lingdong-r2-experiment.md`。
 
 - FK video now uses local originals → existing OSS direct upload → JSON `duration/ratio/resolution/imageUrls/videoUrls/audioUrls` for seven models and their public aliases. Upload/authorization failure or cancellation prevents generation; a rejected generation POST is never automatically retried or sent as multipart. Submission errors now expose the API response message. Requires a new canvas deployment with FK 0.3.4; paid output/download/billing and browser OSS CORS remain pending. This supersedes the local-file transport items below; they record earlier iterations.
 
