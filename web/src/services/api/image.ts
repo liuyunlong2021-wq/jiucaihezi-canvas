@@ -801,7 +801,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
             options?.signal?.throwIfAborted();
             const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/generations"), {
                 model: requestConfig.model, prompt: withSystemPrompt(requestConfig, requestPrompt), n, images,
-                ...(requestSize ? { size: requestSize } : {}), response_format: "url",
+                ...(requestSize ? { size: requestSize } : {}), response_format: "b64_json",
             }, { headers: aiHeaders(requestConfig, "application/json"), signal: options?.signal, timeout: IMAGE_REQUEST_TIMEOUT_MS });
             return await parseImagePayload(response.data);
         } catch (error) {

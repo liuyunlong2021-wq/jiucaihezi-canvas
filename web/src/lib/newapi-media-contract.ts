@@ -47,7 +47,7 @@ export function imageContract(baseUrl: string, model: string): ImageContract | u
     if (model === "gemini-nano-banana-2.1") return "yihong-gemini";
 }
 export function imageContractParams(contract: ImageContract, config: { quality: string; size: string }, count: number, references: number): Record<string, string | number> {
-    if (contract === "lingdong") return { response_format: "url" };
+    if (contract === "lingdong") return { response_format: "b64_json" };
     if (contract === "xiaoyi") return { response_format: "b64_json" };
     const max = contract === "fk-banana" ? 8 : contract === "yihong-gemini" ? 1 : 10;
     if (references > max) throw new Error(`该模型最多接受 ${max} 张参考图`);

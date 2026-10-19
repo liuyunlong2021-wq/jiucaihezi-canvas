@@ -14,6 +14,7 @@ test("Lingdong experiment uses verified public IDs only, URL transport and offic
     expect(videoContract("https://api.jiucaihezi.studio", "sd2.5-a")).toBeUndefined();
     expect(videoContract("https://api.jiucaihezi.studio", "SD-2.5-特价-2")).toBeUndefined();
     for (const name of ["灵动-gpt-image-2.5-flare", "灵动-gpt-image-2.5-sunburst"]) expect(imageContract("https://api.jiucaihezi.studio", name)).toBe("lingdong");
+    expect(imageContractParams("lingdong", { quality: "auto", size: "9:16" }, 1, 2)).toEqual({ response_format: "b64_json" });
 });
 test("FK H3 public mapping uses the same OSS URL contract as its upstream ID", () => {
     const spec = videoContract("https://api.jiucaihezi.studio", "fk-MiniMaxh3")!;

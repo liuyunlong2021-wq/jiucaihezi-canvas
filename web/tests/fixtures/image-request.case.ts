@@ -100,7 +100,8 @@ test.skipIf(!hasPlugins)("actual external plugins accept the generated image con
 test("Lingdong images upload original bytes to R2 then submit JSON, never multipart edits", async () => {
     for (const model of ["灵动-gpt-image-2.5-flare", "灵动-gpt-image-2.5-sunburst"]) {
         const before = uploads.length;
-        await requestEdit(config(model), "两人跳舞", [{ id: "ref", name: "a.png", type: "image/png", dataUrl: "data:image/png;base64,eA==" }]);
+        const result = await requestEdit(config(model), "两人跳舞", [{ id: "ref", name: "a.png", type: "image/png", dataUrl: "data:image/png;base64,eA==" }]);
+        expect(result[0].dataUrl).toBe("data:image/png;base64,eA==");
         const [grant, put] = uploads.slice(before);
         expect(grant.url).toEndWith("/api/creations/lingdong/upload-url");
         expect(JSON.parse(String(grant.options?.body))).toMatchObject({ model, size: 1, content_type: "image/png" });
@@ -109,18 +110,21 @@ test("Lingdong images upload original bytes to R2 then submit JSON, never multip
         const { url, body } = posts.at(-1)!;
         expect(url).toEndWith("/images/generations");
         expect(body).not.toBeInstanceOf(FormData);
-        expect(body).toMatchObject({ model, n: 1, images: [put.url.replace("Signature=put&X-Amz-Expires=300", "Signature=get&X-Amz-Expires=21600")] });
+        expect(body).toMatchObject({ model, n: 1, response_format: "b64_json", images: [put.url.replace("Signature=put&X-Amz-Expires=300", "Signature=get&X-Amz-Expires=21600")] });
         if (hasPlugins) {
             const plugin = await import(join(pluginRoot, "lingdong.plugin.js"));
             const context = { model, body: { kind: "json", value: body }, baseUrl: plugin.meta.baseUrl, apiKey: "fixture" };
             const intent = plugin.protocols.openai_image.decodeRequest(context);
             expect(intent.action).toBe("image_to_image");
-            expect(plugin.buildSubmitRequest({ ...context, requestBody: intent.requestBody }).body.model).toBe(model.slice(3));
+            const upstream = plugin.buildSubmitRequest({ ...context, requestBody: intent.requestBody });
+            expect(upstream.body.model).toBe(model.slice(3));
+            expect(upstream.body.response_format).toBe("url"); // Vendor URL stays server-side; the host owns client Base64 conversion.
         }
         const count = uploads.length;
         await requestGeneration(config(model), "海边");
         expect(uploads.length).toBe(count);
         expect(posts.at(-1)!.body.model).toBe(model);
+        expect(posts.at(-1)!.body.response_format).toBe("b64_json");
     }
 });
 test("Lingdong image upload failure or cancellation never submits a generation", async () => {
